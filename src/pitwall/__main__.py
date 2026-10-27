@@ -4,8 +4,9 @@
     pitwall --source mock           serve with synthetic telemetry
     pitwall --source replay --replay laps.jsonl
     pitwall record laps.jsonl       record a real ACC session (Windows)
-    pitwall --voice male            speak calls with the male voice (female, male, off)
-    pitwall voices download all     fetch the Piper voices (~63 MB each)
+    pitwall --voice female          engineer voice: male (default), female, off
+    pitwall --engine piper          faster, flatter voice engine (default kokoro)
+    pitwall voices download         fetch the voice model (Kokoro 120 MB, Piper 63 MB a voice)
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ def _serve(args: argparse.Namespace) -> None:
         replay_path=args.replay,
         voice=args.voice,
         volume=args.volume,
+        engine=args.engine,
     )
     if args.source:
         settings.source = args.source
@@ -66,14 +68,15 @@ def _record(args: argparse.Namespace) -> None:
 
 
 def _voices(args: argparse.Namespace) -> None:
-    from .voice import VOICES, download, model_path
+    from .voice import VOICES, download, model_files
 
-    for choice in VOICES if args.which == "all" else [args.which]:
-        if model_path(choice).exists():
-            print(f"{choice}: already at {model_path(choice)}")
+    for choice in VOICES[args.engine] if args.which == "all" else [args.which]:
+        files = model_files(args.engine, choice)
+        if all(f.exists() for f in files):
+            print(f"{args.engine} {choice}: already in {files[0].parent}")
             continue
-        print(f"{choice}: downloading {VOICES[choice]} (~63 MB) from huggingface.co/rhasspy/piper-voices ...")
-        print(f"{choice}: saved {download(choice)}")
+        print(f"{args.engine} {choice}: downloading {VOICES[args.engine][choice]} ...")
+        print(f"{args.engine} {choice}: saved to {download(args.engine, choice)[0].parent}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -85,7 +88,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hz", type=float, default=10.0, help="telemetry polls per second")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--lan", action="store_true", help="allow other devices on the network")
-    p.add_argument("--voice", choices=["female", "male", "off"], default="female", help="engineer voice")
+    p.add_argument("--voice", choices=["female", "male", "off"], default="male", help="engineer voice")
+    p.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro", help="voice engine")
     p.add_argument("--volume", type=float, default=1.0, help="voice volume, 0 to 1")
     p.set_defaults(func=_serve)
 
@@ -95,9 +99,10 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--hz", type=float, default=10.0)
     r.set_defaults(func=_record)
 
-    v = sub.add_parser("voices", help="manage the Piper voices")
+    v = sub.add_parser("voices", help="manage the engineer voices")
     v.add_argument("action", choices=["download"])
     v.add_argument("which", choices=["female", "male", "all"], nargs="?", default="all")
+    v.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro")
     v.set_defaults(func=_voices)
 
     args = p.parse_args(argv)

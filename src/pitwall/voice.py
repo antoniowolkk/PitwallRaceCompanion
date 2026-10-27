@@ -1,31 +1,45 @@
-"""Engineer voice: Piper text-to-speech on the CPU, played on the gaming PC.
+"""Engineer voice: local text-to-speech on the CPU, played on the gaming PC.
 
-One worker thread loads the model, renders each line to a cached WAV file (so a
-repeated call plays at once) and plays calls one after another. The poll loop only
-ever puts text on a queue, so speech never slows telemetry.
+Two engines. Kokoro (default) sounds natural but needs ~3 s per new line on 2 cores;
+Piper sounds flatter but renders in ~0.5 s. Either way, one worker thread loads the
+model, renders each line to a cached WAV file (so a repeated call plays at once) and
+plays calls one after another. The poll loop only ever puts text on a queue, so speech
+never slows telemetry.
 """
 
 from __future__ import annotations
 
 import hashlib
+import itertools
 import logging
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
+import time
 import wave
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from urllib.request import urlopen
 
 log = logging.getLogger(__name__)
 
-VOICES = {"female": "en_US-amy-medium", "male": "en_US-lessac-medium"}
-SPEECH_RATE = 0.9  # Piper length_scale: below 1 is faster
+VOICES = {
+    "kokoro": {"female": "af_heart", "male": "bm_george"},
+    "piper": {"female": "en_US-amy-medium", "male": "en_US-lessac-medium"},
+}
+KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/{}"
+KOKORO_FILES = ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin")  # 92 MB + 28 MB, all voices
+KOKORO_SPEED = 1.05
+PIPER_RATE = 0.9  # Piper length_scale: below 1 is faster
 RADIO_DRIVE = 3.0  # compression strength; 1 is barely any
-STYLE = f"r{SPEECH_RATE}-d{RADIO_DRIVE}"  # in the cache key, so a sound change re-renders
+MAX_WAIT_S = 15.0  # a non-urgent line that waited longer than this is stale, drop it
+STYLE = f"k{KOKORO_SPEED}-p{PIPER_RATE}-d{RADIO_DRIVE}"  # in the cache key, so a sound change re-renders
 
 Synth = Callable[[str, Path], None]  # render text to a WAV file
+Loader = Callable[[Path, str, float], Synth]  # (data dir, voice id, volume) -> Synth
 Player = Callable[[Path], None]  # play a WAV file, blocking
 
 
@@ -34,59 +48,99 @@ def data_dir() -> Path:
     return Path(base) / "PitWall"
 
 
-def model_path(choice: str, root: Path | None = None) -> Path:
-    return (root or data_dir()) / "voices" / f"{VOICES[choice]}.onnx"
+def model_files(engine: str, choice: str, root: Path | None = None) -> list[Path]:
+    root = root or data_dir()
+    if engine == "kokoro":
+        return [root / "kokoro" / name for name in KOKORO_FILES]
+    voice_id = VOICES["piper"][choice]
+    return [root / "voices" / f"{voice_id}.onnx", root / "voices" / f"{voice_id}.onnx.json"]
 
 
-def download(choice: str, root: Path | None = None) -> Path:
-    """Fetch one voice (~63 MB) from the official rhasspy/piper-voices repo."""
-    from piper.download_voices import download_voice
+def download(engine: str, choice: str, root: Path | None = None) -> list[Path]:
+    """Fetch what a voice needs: Kokoro from the kokoro-onnx release, Piper (~63 MB a
+    voice) from the official rhasspy/piper-voices repo. Present files are skipped."""
+    files = model_files(engine, choice, root)
+    files[0].parent.mkdir(parents=True, exist_ok=True)
+    if engine == "piper":
+        from piper.download_voices import download_voice
 
-    path = model_path(choice, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    download_voice(VOICES[choice], path.parent)
-    return path
+        download_voice(VOICES["piper"][choice], files[0].parent)
+        return files
+    for path in files:
+        if path.exists():
+            continue
+        tmp = path.with_suffix(".part")
+        with urlopen(KOKORO_URL.format(path.name)) as response, open(tmp, "wb") as f:
+            shutil.copyfileobj(response, f)
+        tmp.replace(path)
+    return files
 
 
-def piper_synth(path: Path, volume: float) -> Synth:
-    import json
-
+def _lean_session(path: Path):
+    """onnxruntime defaults reserve a big memory arena and use every core. Two
+    threads keep speech off the game's cores (more barely helps Kokoro anyway)."""
     import onnxruntime
-    from piper import PiperVoice, SynthesisConfig
-    from piper.config import PiperConfig
 
-    # PiperVoice.load uses default session options: a big memory arena and every
-    # core. Two threads keep speech off the game's cores; lines still render in ~0.3 s.
     opts = onnxruntime.SessionOptions()
     opts.enable_cpu_mem_arena = False
     opts.intra_op_num_threads = 2
     opts.inter_op_num_threads = 1
-    voice = PiperVoice(
-        config=PiperConfig.from_dict(json.loads(Path(f"{path}.json").read_text(encoding="utf-8"))),
-        session=onnxruntime.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"]),
-    )
-    # A touch faster than the default reads more like radio than an audiobook.
-    config = SynthesisConfig(length_scale=SPEECH_RATE)
+    return onnxruntime.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"])
+
+
+def _write_wav(out: Path, audio, sample_rate: int, volume: float) -> None:
+    tmp = out.with_suffix(".tmp")
+    with wave.open(str(tmp), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(radio_loud(audio, volume).tobytes())
+    tmp.replace(out)  # never leave a half-written cache file
+
+
+def kokoro_synth(root: Path, voice_id: str, volume: float) -> Synth:
+    from kokoro_onnx import Kokoro
+
+    model, voices = model_files("kokoro", "", root)
+    kokoro = Kokoro.from_session(_lean_session(model), str(voices))
+    lang = "en-gb" if voice_id.startswith("b") else "en-us"  # bf_/bm_ voices are British
 
     def synth(text: str, out: Path) -> None:
-        import numpy as np
-
-        chunks = list(voice.synthesize(text, syn_config=config))
-        audio = np.concatenate([c.audio_float_array for c in chunks]) if chunks else np.zeros(1, np.float32)
-        tmp = out.with_suffix(".tmp")
-        with wave.open(str(tmp), "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(voice.config.sample_rate)
-            wav.writeframes(radio_loud(audio, volume).tobytes())
-        tmp.replace(out)  # never leave a half-written cache file
+        audio, sample_rate = kokoro.create(text, voice=voice_id, speed=KOKORO_SPEED, lang=lang)
+        _write_wav(out, audio, sample_rate, volume)
 
     return synth
 
 
+def piper_synth(root: Path, voice_id: str, volume: float) -> Synth:
+    import json
+
+    import numpy as np
+    from piper import PiperVoice, SynthesisConfig
+    from piper.config import PiperConfig
+
+    model = root / "voices" / f"{voice_id}.onnx"
+    voice = PiperVoice(
+        config=PiperConfig.from_dict(json.loads(Path(f"{model}.json").read_text(encoding="utf-8"))),
+        session=_lean_session(model),
+    )
+    # A touch faster than the default reads more like radio than an audiobook.
+    config = SynthesisConfig(length_scale=PIPER_RATE)
+
+    def synth(text: str, out: Path) -> None:
+        chunks = list(voice.synthesize(text, syn_config=config))
+        audio = np.concatenate([c.audio_float_array for c in chunks]) if chunks else np.zeros(1, np.float32)
+        _write_wav(out, audio, voice.config.sample_rate, volume)
+
+    return synth
+
+
+LOADERS: dict[str, Loader] = {"kokoro": kokoro_synth, "piper": piper_synth}
+
+
 def radio_loud(audio, volume: float):
     """Soft-clip compression: lifts the quiet parts of speech so it cuts through engine
-    noise like team radio. Piper only normalises the peak, which leaves speech quiet."""
+    noise like team radio. TTS only normalises the peak, which leaves speech quiet."""
     import numpy as np
 
     peak = float(np.max(np.abs(audio))) or 1.0
@@ -111,47 +165,70 @@ class Voice:
 
     def __init__(
         self,
-        choice: str = "female",
+        choice: str = "male",
         volume: float = 1.0,
         root: Path | None = None,
-        load: Callable[[Path, float], Synth] = piper_synth,
+        engine: str = "kokoro",
+        load: Loader | None = None,
         player: Player = play,
     ):
+        self.engine = engine
         self.choice = choice
         self.volume = volume
         self._root = root or data_dir()
-        self._load = load
+        self._load = load or LOADERS[engine]
         self._player = player
-        self._queue: queue.Queue[str | None] = queue.Queue()
+        # (priority, order, queued at, text, on_start); urgent (1) first, text None stops.
+        self._queue: queue.PriorityQueue[tuple[int, int, float, str | None, Callable[[], None] | None]] = (
+            queue.PriorityQueue()
+        )
+        self._order = itertools.count()
         self._thread: threading.Thread | None = None
         self._synth: Synth | None = None
         if choice == "off":
             self.status = "off"
-        elif not model_path(choice, self._root).exists():
+        elif not all(p.exists() for p in model_files(engine, choice, self._root)):
             self.status = "missing"
         else:
             self.status = "loading"
 
     @property
+    def voice_id(self) -> str:
+        return VOICES[self.engine].get(self.choice, "off")
+
+    @property
     def cache_dir(self) -> Path:
-        return self._root / "cache" / VOICES.get(self.choice, "off")
+        return self._root / "cache" / f"{self.engine}-{self.voice_id}"
+
+    @property
+    def active(self) -> bool:
+        return self.status in ("loading", "ready")
 
     def start(self, warm: Iterable[str] = ()) -> None:
-        """Load the model in the background and pre-render fixed lines."""
+        """Load the model in the background and pre-render lines we know we will need."""
         if self.status != "loading":
             if self.status == "missing":
-                log.warning("voice %s not downloaded; run: pitwall voices download %s", self.choice, self.choice)
+                log.warning(
+                    "voice not downloaded; run: pitwall voices download %s --engine %s", self.choice, self.engine
+                )
             return
         self._thread = threading.Thread(target=self._run, args=(list(warm),), name="voice", daemon=True)
         self._thread.start()
 
-    def say(self, text: str) -> None:
-        if self.status in ("loading", "ready"):
-            self._queue.put(text)
+    def say(self, text: str, on_start: Callable[[], None] | None = None, priority: int = 2) -> None:
+        """Queue a line; on_start runs (in the voice thread) right before it plays.
+
+        A call waiting behind a slow render must not hold up an urgent one, so the
+        queue is ordered by priority, and non-urgent lines go stale after MAX_WAIT_S.
+        """
+        if self.active:
+            self._queue.put((priority, next(self._order), time.monotonic(), text, on_start))
+        elif on_start:
+            on_start()
 
     def close(self) -> None:
         if self._thread:
-            self._queue.put(None)
+            self._queue.put((0, next(self._order), 0.0, None, None))
             self._thread.join(timeout=5)
 
     def _wav(self, text: str) -> Path:
@@ -164,18 +241,36 @@ class Voice:
 
     def _run(self, warm: list[str]) -> None:
         try:
-            self._synth = self._load(model_path(self.choice, self._root), self.volume)
+            self._synth = self._load(self._root, self.voice_id, self.volume)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            for text in warm:
-                self._wav(text)
         except Exception:
             log.exception("voice failed to load")
             self.status = "error"
             return
         self.status = "ready"
-        log.info("voice ready: %s", VOICES[self.choice])
-        while (text := self._queue.get()) is not None:
+        log.info("voice ready: %s %s", self.engine, self.voice_id)
+        # Real calls always go first; pre-rendering (Kokoro ~3 s a line on the first run,
+        # cache hits after) only uses the gaps.
+        while True:
             try:
-                self._player(self._wav(text))
+                item = self._queue.get(block=not warm)
+            except queue.Empty:
+                text = warm.pop(0)
+                try:
+                    self._wav(text)
+                except Exception:
+                    log.exception("voice failed to pre-render: %s", text)
+                continue
+            priority, _, queued_at, text, on_start = item
+            if text is None:
+                return
+            if priority > 1 and time.monotonic() - queued_at > MAX_WAIT_S:
+                log.info("voice dropped stale line: %s", text)
+                continue
+            try:
+                wav = self._wav(text)
+                if on_start:
+                    on_start()
+                self._player(wav)
             except Exception:
                 log.exception("voice failed to speak: %s", text)

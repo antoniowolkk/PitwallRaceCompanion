@@ -11,7 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
-from .events import EventEngine, Radio, load_calls
+from .events import EventEngine, Radio, load_calls, words
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
 from .voice import Voice
@@ -54,7 +54,7 @@ def create_app(
 ) -> FastAPI:
     hub = Hub()
     if voice is None:
-        voice = Voice(settings.voice, settings.volume) if run_poller else Voice("off")
+        voice = Voice(settings.voice, settings.volume, engine=settings.engine) if run_poller else Voice("off")
     reason = ""
     if source is None:
         try:
@@ -72,8 +72,13 @@ def create_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Lines without placeholders are rendered up front so they play at once.
-        voice.start(line["text"] for line in load_calls().values() if "{" not in line["text"])
+        # Lines we can predict are rendered up front so they play at once: every fixed
+        # line, urgent ones first, plus the low-fuel warning for the last few laps.
+        lines = sorted(load_calls().values(), key=lambda line: line["priority"])
+        warm = [line["text"] for line in lines if "{" not in line["text"]]
+        fuel = load_calls()["fuel_warn"]["text"]
+        warm += [fuel.format(laps=words(n)) for n in range(1, int(settings.thresholds["fuel"]["warn_laps"]) + 1)]
+        voice.start(warm)
         task = asyncio.create_task(poller.run()) if run_poller else None
         try:
             yield

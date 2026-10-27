@@ -96,12 +96,24 @@ class Poller:
             self._radio.push(self._engine.update(snap, now))
             call = self._radio.next(now)
             if call:
-                msg = {"type": "radio", **call.to_wire(), "time": time.strftime("%H:%M:%S")}
-                self.radio_log.append(msg)
                 log.info("radio: %s", call.text)
-                if self._voice:
-                    self._voice.say(call.text)
-                await self._broadcast(msg)
+                msg = {"type": "radio", **call.to_wire()}
+                if self._voice and self._voice.active:
+                    # Subtitle appears when the voice starts, which can be seconds later
+                    # if the line still has to be rendered.
+                    loop = asyncio.get_running_loop()
+                    self._voice.say(
+                        call.text,
+                        on_start=lambda: asyncio.run_coroutine_threadsafe(self._send_radio(msg), loop),
+                        priority=call.priority,
+                    )
+                else:
+                    await self._send_radio(msg)
+
+    async def _send_radio(self, msg: dict[str, Any]) -> None:
+        msg["time"] = time.strftime("%H:%M:%S")
+        self.radio_log.append(msg)
+        await self._broadcast(msg)
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
