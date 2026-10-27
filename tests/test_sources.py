@@ -1,0 +1,99 @@
+import io
+import json
+from enum import Enum
+from types import SimpleNamespace
+
+from pitwall.models import NO_TIME
+from pitwall.telemetry.acc import from_acc
+from pitwall.telemetry.mock import MockSource
+from pitwall.telemetry.replay import Recorder, ReplaySource
+
+
+def run_laps(src: MockSource, laps: int) -> None:
+    while src.laps < laps:
+        src.step(1.0)
+
+
+def test_mock_laps_look_like_gt3_laps():
+    src = MockSource(seed=3, clock=None)
+    run_laps(src, 3)
+    snap = src.snapshot()
+    assert 95_000 < snap.last_ms < 120_000
+    assert snap.best_ms is None or snap.best_ms <= snap.last_ms or not snap.lap_valid
+
+
+def test_mock_burns_fuel_and_warms_tyres():
+    src = MockSource(seed=1, clock=None, start_fuel_l=30.0)
+    run_laps(src, 2)
+    snap = src.snapshot()
+    assert 23.5 < snap.fuel_l < 24.5  # 2 laps at 2.9 L
+    assert all(75 < t < 95 for t in snap.tyre_temp_c)
+    assert all(25 < p < 28 for p in snap.tyre_pressure_psi)
+
+
+def test_mock_is_deterministic_per_seed():
+    a, b = MockSource(seed=7, clock=None), MockSource(seed=7, clock=None)
+    run_laps(a, 2)
+    run_laps(b, 2)
+    assert a.last_ms == b.last_ms
+
+
+def test_recorder_and_replay_roundtrip(tmp_path):
+    src = MockSource(seed=2, clock=None)
+    t = [0.0]
+    buf = io.StringIO()
+    rec = Recorder(buf, clock=lambda: t[0])
+    for _ in range(20):
+        src.step(0.1)
+        rec.write(src.snapshot())
+        t[0] += 0.1
+    path = tmp_path / "laps.jsonl"
+    path.write_text(buf.getvalue())
+    assert json.loads(buf.getvalue().splitlines()[0])["t"] == 0.0
+
+    now = [0.0]
+    replay = ReplaySource(path, clock=lambda: now[0])
+    first = replay.read()
+    now[0] = 1.0
+    later = replay.read()
+    assert first.current_ms < later.current_ms
+    now[0] = 2.05  # past the end: loops back to the start
+    assert replay.read().current_ms < later.current_ms
+
+
+class _Status(Enum):
+    ACC_LIVE = 2
+
+
+class _Session(Enum):
+    ACC_RACE = 2
+
+
+class _Flag(Enum):
+    ACC_YELLOW_FLAG = 2
+
+
+def _wheels(fl, fr, rl, rr):
+    return SimpleNamespace(front_left=fl, front_right=fr, rear_left=rl, rear_right=rr)
+
+
+def test_from_acc_maps_library_fields():
+    physics = SimpleNamespace(
+        speed_kmh=212.4, gear=4, rpm=7400, fuel=41.2,
+        tyre_core_temp=_wheels(84, 82, 79, 80), wheel_pressure=_wheels(26.4, 26.3, 26.1, 26.2),
+    )
+    graphics = SimpleNamespace(
+        status=_Status.ACC_LIVE, session_type=_Session.ACC_RACE, flag=_Flag.ACC_YELLOW_FLAG,
+        fuel_per_lap=2.9, fuel_estimated_laps=14.2, completed_lap=5,
+        current_time=34_000, last_time=104_321, best_time=NO_TIME,
+        is_valid_lap=1, is_in_pit_lane=0,
+    )
+    static = SimpleNamespace(car_model="ferrari_296_gt3", track="barcelona", max_rpm=8500, max_fuel=120.0)
+    snap = from_acc(physics, graphics, static)
+    assert snap.status == "live"
+    assert snap.session == "race"
+    assert snap.flag == "yellow"
+    assert snap.gear == "3"
+    assert snap.tyre_temp_c == (84, 82, 79, 80)
+    assert snap.last_ms == 104_321
+    assert snap.best_ms is None

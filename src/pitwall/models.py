@@ -1,0 +1,91 @@
+"""Player-car telemetry snapshot shared by every telemetry source."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+# ACC reports "no time yet" as INT32_MAX.
+NO_TIME = 2147483647
+
+Wheels = tuple[float, float, float, float]  # FL, FR, RL, RR
+
+
+def gear_label(acc_gear: int) -> str:
+    """ACC physics gear: 0 = R, 1 = N, 2 = 1st, ..."""
+    if acc_gear <= 0:
+        return "R"
+    if acc_gear == 1:
+        return "N"
+    return str(acc_gear - 1)
+
+
+def lap_ms(value: int | None) -> int | None:
+    if value is None or value <= 0 or value >= NO_TIME:
+        return None
+    return int(value)
+
+
+@dataclass(slots=True)
+class Snapshot:
+    status: str = "live"  # live | pause | replay
+    session: str = "unknown"
+    car: str = ""
+    track: str = ""
+    speed_kmh: float = 0.0
+    gear: str = "N"
+    rpm: int = 0
+    max_rpm: int = 0
+    fuel_l: float = 0.0
+    max_fuel_l: float = 0.0
+    fuel_per_lap_l: float = 0.0
+    fuel_laps_left: float = 0.0
+    tyre_temp_c: Wheels = (0.0, 0.0, 0.0, 0.0)
+    tyre_pressure_psi: Wheels = (0.0, 0.0, 0.0, 0.0)
+    laps: int = 0
+    current_ms: int | None = None
+    last_ms: int | None = None
+    best_ms: int | None = None
+    lap_valid: bool = True
+    flag: str = "none"
+    in_pit_lane: bool = False
+
+    def to_wire(self) -> dict[str, Any]:
+        """Rounded values, so the diff only sends changes a driver can see."""
+        return {
+            "status": self.status,
+            "session": self.session,
+            "car": self.car,
+            "track": self.track,
+            "speed_kmh": round(self.speed_kmh),
+            "gear": self.gear,
+            "rpm": int(round(self.rpm, -1)),
+            "max_rpm": self.max_rpm,
+            "fuel_l": round(self.fuel_l, 1),
+            "max_fuel_l": round(self.max_fuel_l, 1),
+            "fuel_per_lap_l": round(self.fuel_per_lap_l, 2),
+            "fuel_laps_left": round(self.fuel_laps_left, 1),
+            "tyre_temp_c": [round(t, 1) for t in self.tyre_temp_c],
+            "tyre_pressure_psi": [round(p, 1) for p in self.tyre_pressure_psi],
+            "laps": self.laps,
+            "current_ms": self.current_ms,
+            "last_ms": self.last_ms,
+            "best_ms": self.best_ms,
+            "lap_valid": self.lap_valid,
+            "flag": self.flag,
+            "in_pit_lane": self.in_pit_lane,
+        }
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> Snapshot:
+        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        for key in ("tyre_temp_c", "tyre_pressure_psi"):
+            if key in known:
+                known[key] = tuple(known[key])
+        return cls(**known)
+
+
+def diff(prev: dict[str, Any] | None, cur: dict[str, Any]) -> dict[str, Any]:
+    if prev is None:
+        return dict(cur)
+    return {k: v for k, v in cur.items() if prev.get(k) != v}

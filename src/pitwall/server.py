@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+
+from .config import Settings
+from .poller import Poller
+from .telemetry import SourceUnavailable, TelemetrySource, make_source
+
+log = logging.getLogger(__name__)
+WEB_DIR = Path(__file__).with_name("web")
+
+
+class Hub:
+    def __init__(self) -> None:
+        self.clients: set[WebSocket] = set()
+
+    async def broadcast(self, msg: dict[str, Any]) -> None:
+        dead = []
+        for ws in list(self.clients):
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.clients.discard(ws)
+
+
+def client_config(settings: Settings) -> dict[str, Any]:
+    t = settings.thresholds
+    return {
+        "type": "config",
+        "tyre_temp_c": t["tyres"]["temp_c"],
+        "tyre_pressure_psi": t["tyres"]["pressure_psi"],
+        "fuel_warn_laps": t["fuel"]["warn_laps"],
+        "fuel_critical_laps": t["fuel"]["critical_laps"],
+    }
+
+
+def create_app(settings: Settings, source: TelemetrySource | None = None, run_poller: bool = True) -> FastAPI:
+    hub = Hub()
+    reason = ""
+    if source is None:
+        try:
+            source = make_source(settings)
+        except SourceUnavailable as e:
+            reason = str(e)
+            log.warning("telemetry source unavailable: %s", e)
+    poller = Poller(source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        task = asyncio.create_task(poller.run()) if run_poller else None
+        try:
+            yield
+        finally:
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            if source:
+                source.close()
+
+    app = FastAPI(title="Pit Wall", lifespan=lifespan)
+    app.state.poller = poller
+    app.state.hub = hub
+
+    @app.get("/api/status")
+    async def status() -> dict[str, Any]:
+        return poller.status()
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_json(client_config(settings))
+        await websocket.send_json(poller.status())
+        if poller.last is not None:
+            await websocket.send_json({"type": "telemetry", "data": poller.last})
+        hub.clients.add(websocket)
+        try:
+            while True:
+                await websocket.receive_text()  # client messages unused in phase 1
+        except WebSocketDisconnect:
+            pass
+        finally:
+            hub.clients.discard(websocket)
+
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+    return app

@@ -1,0 +1,12 @@
+# Pit Wall thresholds. Starting values, to tune in testing.
+
+[tyres]
+# Core temperature window in °C for GT3 dry tyres (to verify per car).
+temp_c = [80.0, 90.0]
+# Hot pressure window in psi for GT3 dry tyres (to verify against current ACC version).
+pressure_psi = [26.0, 27.0]
+
+[fuel]
+# Fuel tile turns to warning below this many laps left.
+warn_laps = 3.0
+critical_laps = 1.5
