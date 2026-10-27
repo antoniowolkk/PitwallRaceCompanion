@@ -38,7 +38,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - [x] Gear mapping right (ACC physics gear: 0 = R, 1 = N, 2 = 1st). Raw gear 1 shows N.
 - [ ] Flags show (yellow, blue, etc.) when the game shows them.
 - [x] Pause > 5 s: does it flip to Waiting? No: both packed_ids keep ticking while paused. But physics reads as zeros then, so `AccSource` now holds the last live values and the dashboard shows ACC **Paused**.
-- [ ] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. Session change (Nürburgring → Spa) already works: Waiting, then Connected with the new track.
+- [ ] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. Quit verified: ACC writes `ACC_OFF` on exit, so Waiting is instant (stale timeout not needed). Session change (Nürburgring → Spa) works too. Restart still to check.
 - [ ] Record a ~10 min session with `pitwall record` for future replay tests.
 - [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS still to check.
 - [ ] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3.
@@ -46,7 +46,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 
 ## Things learned while building
 
-- `pyaccsharedmemory` 1.0.0 opens the named maps with `ACCESS_WRITE`, so they exist (all zeros, status ACC_OFF) even when ACC is not running, and our open handle keeps the **last values alive after ACC exits**. So `AccSource` treats frozen physics + graphics `packed_id` for 5 s as disconnected. Verified: both ids keep ticking while paused.
+- `pyaccsharedmemory` 1.0.0 opens the named maps with `ACCESS_WRITE`, so they exist (all zeros, status ACC_OFF) even when ACC is not running, and our open handle keeps the **last values alive after ACC exits**. On a clean quit ACC does write `ACC_OFF` first (verified); the 5 s stale check stays as the fallback for a crash. So `AccSource` treats frozen physics + graphics `packed_id` for 5 s as disconnected. Verified: both ids keep ticking while paused.
 - While paused (`ACC_PAUSE`) ACC zeroes physics: fuel 0, gear R, rpm 0, tyres 0. `acc.hold_on_pause` keeps the last live snapshot with `status="pause"`, so later event rules must not see a fake empty tank. If Pit Wall starts while the game is paused there is nothing to hold, and zeros pass through until you resume.
 - `AccSource` reads the maps with the module's `read_physic_map` / `read_graphics_map` / `read_static_map` directly, not `read_shared_memory()`, which returns None whenever physics is unchanged and deep-copies every call.
 - ACC reports "no lap time" as INT32_MAX; `models.lap_ms` maps it to None.

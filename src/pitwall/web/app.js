@@ -74,10 +74,36 @@
     return ["good", "OK"];
   }
 
+  // Back to the "no data" look, so old numbers never sit under a Waiting banner.
+  function clear() {
+    for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
+      $(id).textContent = "—";
+    }
+    $("current-lbl").textContent = "current";
+    $("flag").dataset.flag = "none";
+    lights.forEach((cell) => cell.classList.remove("on"));
+    litCells = 0;
+    $("tile-fuel").dataset.level = "idle";
+    $("fuel-state").textContent = "";
+    $("fuel-bar").style.width = "0%";
+    document.querySelectorAll(".tyre").forEach((el) => {
+      el.dataset.level = "idle";
+      el.querySelector(".t").textContent = "—";
+      el.querySelector(".p").textContent = "—";
+      el.querySelector(".state").textContent = "";
+    });
+    $("last-delta").textContent = " ";
+    $("car-track").textContent = " ";
+  }
+
   function render() {
     state.dirty = false;
     const t = state.tele;
-    if (!state.cfg || t.speed_kmh === undefined) return;
+    if (!state.cfg) return;
+    if (t.speed_kmh === undefined) {
+      clear();
+      return;
+    }
 
     $("speed").textContent = t.speed_kmh;
     $("gear").textContent = t.gear;
