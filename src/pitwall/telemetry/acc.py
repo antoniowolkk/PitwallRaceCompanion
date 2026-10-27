@@ -1,8 +1,8 @@
 """ACC shared memory reader, player car only. Windows only.
 
-Field names follow pyaccsharedmemory 1.0.0. Still to verify in a real session:
-whether graphics.packed_id keeps ticking while paused, and that the map
-really goes stale (not back to ACC_OFF) when the game closes.
+Field names follow pyaccsharedmemory 1.0.0. Verified in a real session: both
+packed_ids keep ticking while paused, and physics reads as zeros then. Still to
+verify: that the map really goes stale (not back to ACC_OFF) when the game closes.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from ..models import Snapshot, gear_label, lap_ms
@@ -44,14 +45,19 @@ def _wheels(w: Any) -> tuple[float, float, float, float]:
     return (w.front_left, w.front_right, w.rear_left, w.rear_right)
 
 
+def _text(value: str) -> str:
+    """Static strings come NUL-padded to their fixed buffer size."""
+    return value.split("\x00", 1)[0].strip()
+
+
 def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     """Map pyaccsharedmemory Physics/Graphics/Static maps to a Snapshot."""
     fuel_per_lap = float(graphics.fuel_per_lap)
     return Snapshot(
         status=_STATUS.get(graphics.status.name, "live"),
         session=_SESSION.get(graphics.session_type.name, "unknown"),
-        car=static.car_model,
-        track=static.track,
+        car=_text(static.car_model),
+        track=_text(static.track),
         speed_kmh=float(physics.speed_kmh),
         gear=gear_label(int(physics.gear)),
         rpm=int(physics.rpm),
@@ -72,6 +78,50 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     )
 
 
+def hold_on_pause(snap: Snapshot, held: Snapshot | None) -> Snapshot:
+    """ACC zeroes physics while paused (fuel 0, gear R, tyres 0), so keep the last live values."""
+    if snap.status != "pause" or held is None:
+        return snap
+    return replace(held, status="pause")
+
+
+def on_track(snap: Snapshot) -> bool:
+    """ACC says live on the grid screen before Drive (30 s at Monza) but sends an empty car.
+
+    Tyre pressures are never all zero once the car is out, even with an empty tank.
+    """
+    return any(p > 0 for p in snap.tyre_pressure_psi)
+
+
+class BestLap:
+    """ACC's best_time stayed on lap 1 for a whole race at Spa (all laps valid), so track it here.
+
+    A lap counts when the lap counter steps up and the lap was valid just before;
+    ACC fills last_time in the same frame. The lower of ours and ACC's wins.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._best: int | None = None
+        self._laps: int | None = None
+        self._valid = True
+        self._key: tuple[str, str, str] | None = None
+
+    def apply(self, snap: Snapshot) -> Snapshot:
+        key = (snap.session, snap.car, snap.track)
+        if key != self._key or (self._laps is not None and snap.laps < self._laps):
+            self.reset()
+            self._key = key
+        if self._laps is not None and snap.laps > self._laps and self._valid and snap.last_ms:
+            self._best = snap.last_ms if self._best is None else min(self._best, snap.last_ms)
+        self._laps = snap.laps
+        self._valid = snap.lap_valid
+        best = min((b for b in (snap.best_ms, self._best) if b), default=None)
+        return snap if best == snap.best_ms else replace(snap, best_ms=best)
+
+
 class AccSource:
     name = "acc"
 
@@ -86,6 +136,8 @@ class AccSource:
         # Creates the named maps even before ACC runs; they read as ACC_OFF then.
         self._asm = acc.accSharedMemory()
         self._static: Any = None
+        self._held: Snapshot | None = None
+        self._best = BestLap()
         self._ids: tuple[int, int] | None = None
         self._last_change = clock()
         self._stale_after_s = stale_after_s
@@ -97,6 +149,7 @@ class AccSource:
         graphics = acc.read_graphics_map(self._asm.graphicSM)
         if graphics.status == acc.ACC_STATUS.ACC_OFF:
             self._static = None
+            self._held = None
             return None
 
         # Our open handle keeps the last values alive after ACC exits,
@@ -108,11 +161,18 @@ class AccSource:
             self._last_change = now
         elif now - self._last_change > self._stale_after_s:
             self._static = None
+            self._held = None
             return None
 
         if self._static is None:
             self._static = acc.read_static_map(self._asm.staticSM)
-        return from_acc(physics, graphics, self._static)
+        snap = hold_on_pause(from_acc(physics, graphics, self._static), self._held)
+        if not on_track(snap):
+            return None  # grid screen, or paused with nothing to hold yet
+        if snap.status == "live":
+            snap = self._best.apply(snap)
+            self._held = snap
+        return snap
 
     def close(self) -> None:  # pragma: no cover - Windows only
         self._asm.close()

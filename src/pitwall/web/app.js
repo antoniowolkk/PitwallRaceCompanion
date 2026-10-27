@@ -39,7 +39,8 @@
   function renderStatus() {
     const s = state.status;
     if (!s) return;
-    const acc = {
+    const paused = s.acc === "connected" && state.tele.status === "pause";
+    const acc = paused ? ["warn", "❚❚", "Paused"] : {
       connected: ["good", "●", "Connected"],
       waiting: ["idle", "○", "Waiting"],
       unavailable: ["bad", "✕", "Unavailable"],
@@ -51,13 +52,16 @@
     document.body.dataset.acc = s.acc;
 
     const banner = $("banner");
-    if (s.acc === "connected") {
+    if (paused) {
+      banner.hidden = false;
+      banner.textContent = "Game paused. Values update again when you resume.";
+    } else if (s.acc === "connected") {
       banner.hidden = true;
     } else {
       banner.hidden = false;
       banner.textContent = s.acc === "unavailable"
         ? `Telemetry unavailable: ${s.reason}. Run with --source mock to test without the game.`
-        : "Waiting for ACC. Start a session from Steam; Pit Wall connects on its own.";
+        : "Waiting for ACC. Start a session from Steam; Pit Wall connects once you are on track.";
     }
   }
 
@@ -70,10 +74,36 @@
     return ["good", "OK"];
   }
 
+  // Back to the "no data" look, so old numbers never sit under a Waiting banner.
+  function clear() {
+    for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
+      $(id).textContent = "—";
+    }
+    $("current-lbl").textContent = "current";
+    $("flag").dataset.flag = "none";
+    lights.forEach((cell) => cell.classList.remove("on"));
+    litCells = 0;
+    $("tile-fuel").dataset.level = "idle";
+    $("fuel-state").textContent = "";
+    $("fuel-bar").style.width = "0%";
+    document.querySelectorAll(".tyre").forEach((el) => {
+      el.dataset.level = "idle";
+      el.querySelector(".t").textContent = "—";
+      el.querySelector(".p").textContent = "—";
+      el.querySelector(".state").textContent = "";
+    });
+    $("last-delta").textContent = " ";
+    $("car-track").textContent = " ";
+  }
+
   function render() {
     state.dirty = false;
     const t = state.tele;
-    if (!state.cfg || t.speed_kmh === undefined) return;
+    if (!state.cfg) return;
+    if (t.speed_kmh === undefined) {
+      clear();
+      return;
+    }
 
     $("speed").textContent = t.speed_kmh;
     $("gear").textContent = t.gear;
@@ -122,7 +152,10 @@
     $("last").textContent = fmtLap(t.last_ms);
     $("best").textContent = fmtLap(t.best_ms);
     const d = $("last-delta");
-    if (t.last_ms != null && t.best_ms != null) {
+    if (t.last_ms != null && t.last_ms === t.best_ms) {
+      d.textContent = "● Best lap";
+      d.className = "sub delta-good";
+    } else if (t.last_ms != null && t.best_ms != null) {
       const delta = (t.last_ms - t.best_ms) / 1000;
       d.textContent = `${delta <= 0 ? "▼" : "▲"} ${delta >= 0 ? "+" : ""}${delta.toFixed(3)} to best`;
       d.className = `sub ${delta <= 0 ? "delta-good" : "delta-bad"}`;
@@ -151,6 +184,7 @@
         break;
       case "telemetry":
         Object.assign(state.tele, msg.data);
+        if ("status" in msg.data) renderStatus();
         break;
     }
     schedule();
