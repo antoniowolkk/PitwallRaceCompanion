@@ -51,7 +51,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - `AccSource` reads the maps with the module's `read_physic_map` / `read_graphics_map` / `read_static_map` directly, not `read_shared_memory()`, which returns None whenever physics is unchanged and deep-copies every call.
 - ACC reports "no lap time" as INT32_MAX; `models.lap_ms` maps it to None.
 - In a race at Spa, ACC's `best_time` stayed on lap 1 (3:46) all race though every lap was valid. `acc.BestLap` tracks the best from completed valid laps and keeps the lower of the two.
-- In that race fuel stayed at 56.0 L all race (it dropped normally in practice): probably fuel usage off in the race settings. Check before trusting fuel calls in race recordings.
+- In that race fuel stayed at 56.0 L all race because fuel usage was off in the race settings (confirmed). So `spa_race.jsonl` is no good for testing fuel calls; record another session with fuel usage on for that.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
