@@ -38,7 +38,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - [x] Gear mapping right (ACC physics gear: 0 = R, 1 = N, 2 = 1st). Raw gear 1 shows N.
 - [ ] Flags show (yellow, blue, etc.) when the game shows them.
 - [x] Pause > 5 s: does it flip to Waiting? No: both packed_ids keep ticking while paused. But physics reads as zeros then, so `AccSource` now holds the last live values and the dashboard shows ACC **Paused**.
-- [ ] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. Quit verified: ACC writes `ACC_OFF` on exit, so Waiting is instant (stale timeout not needed). Session change (Nürburgring → Spa) works too. Restart still to check.
+- [x] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. ACC writes `ACC_OFF` on exit, so Waiting is instant; restart reconnected on its own once the session went live. Session change (Nürburgring → Spa) works too.
 - [ ] Record a ~10 min session with `pitwall record` for future replay tests.
 - [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS still to check.
 - [ ] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3.
