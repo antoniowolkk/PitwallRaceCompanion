@@ -26,9 +26,8 @@ uv run pytest
 ## Status (2026-10-27)
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
-- **Not yet done:** Phase 1 test on Windows with ACC running (checklist below). This is the Phase 1 gate.
 - **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
-- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done. Still to do: Piper voice, settings screen, Lite mode, pit window call (needs session data from ACC graphics).
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Still to do: Piper voice, settings screen, Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
