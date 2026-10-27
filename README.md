@@ -15,7 +15,7 @@ Needs [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pitwall voices download all  # engineer voices, ~63 MB each (once)
+uv run pitwall voices download      # engineer voice model, 120 MB (once)
 uv run pitwall                      # ACC on Windows, mock telemetry elsewhere
 ```
 
@@ -28,10 +28,11 @@ uv run pitwall --source mock --mock-speed 4      # synthetic laps, 4x time
 uv run pitwall record recordings/barcelona.jsonl # Windows: record a real session
 uv run pitwall --replay recordings/barcelona.jsonl
 uv run pitwall --lan                             # let a tablet or phone on the network connect
-uv run pitwall --voice male --volume 0.6         # voice: female (default), male, off
+uv run pitwall --voice female --volume 0.8       # voice: male (default), female, off
+uv run pitwall --engine piper                    # lighter, faster, flatter voice engine
 ```
 
-The voice is [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) with the `en_US-amy-medium` and `en_US-lessac-medium` voices, run on the CPU and played on the PC.
+The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) (`bm_george` male, `af_heart` female), run on the CPU and played on the PC. [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) is the lighter fallback.
 
 ## Test
 
