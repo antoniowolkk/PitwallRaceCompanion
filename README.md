@@ -7,7 +7,7 @@ Product spec: [docs/PRD.md](docs/PRD.md).
 ## Status
 
 Phase 1 done: core service, ACC shared memory reader, mock and replay modes, Live dashboard.
-Phase 2 in progress: event engine and canned radio calls with subtitles, radio log and a Piper voice are in; settings screen and Lite mode are next.
+Phase 2 in progress: event engine, casual radio calls with subtitles and radio log, the Kokoro engineer voice, and a Settings screen are in; Lite mode and a pit window call are next.
 
 ## Run
 
@@ -19,7 +19,7 @@ uv run pitwall voices download      # engineer voice model, 120 MB (once)
 uv run pitwall                      # ACC on Windows, mock telemetry elsewhere
 ```
 
-Open http://localhost:8765. Start ACC from Steam as usual; Pit Wall connects when a session goes live.
+Open http://localhost:8765. Start ACC from Steam as usual; Pit Wall connects when a session goes live. Voice, volume, which calls you hear and subtitles are on the Settings tab and are remembered.
 
 Options:
 

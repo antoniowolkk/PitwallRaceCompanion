@@ -16,7 +16,7 @@ import logging
 import time
 from pathlib import Path
 
-from .config import Settings
+from .config import Prefs, Settings, data_dir
 
 
 def _serve(args: argparse.Namespace) -> None:
@@ -24,15 +24,18 @@ def _serve(args: argparse.Namespace) -> None:
 
     from .server import create_app
 
+    # Saved Settings-screen choices, with any flag given on the command line on top for this run.
+    prefs_path = data_dir() / "settings.json"
+    flags = {"voice": args.voice, "volume": args.volume, "engine": args.engine}
+    prefs = Prefs.load(prefs_path).updated({k: v for k, v in flags.items() if v is not None})
     settings = Settings(
         poll_hz=args.hz,
         port=args.port,
         host="0.0.0.0" if args.lan else "127.0.0.1",
         mock_speed=args.mock_speed,
         replay_path=args.replay,
-        voice=args.voice,
-        volume=args.volume,
-        engine=args.engine,
+        prefs=prefs,
+        prefs_path=prefs_path,
     )
     if args.source:
         settings.source = args.source
@@ -88,9 +91,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hz", type=float, default=10.0, help="telemetry polls per second")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--lan", action="store_true", help="allow other devices on the network")
-    p.add_argument("--voice", choices=["female", "male", "off"], default="male", help="engineer voice")
-    p.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro", help="voice engine")
-    p.add_argument("--volume", type=float, default=1.0, help="voice volume, 0 to 1")
+    p.add_argument("--voice", choices=["female", "male", "off"], help="engineer voice (default: saved setting, male)")
+    p.add_argument("--engine", choices=["kokoro", "piper"], help="voice engine (default: saved setting, kokoro)")
+    p.add_argument("--volume", type=float, help="voice volume, 0 to 1 (default: saved setting, 1)")
     p.set_defaults(func=_serve)
 
     sub = p.add_subparsers()

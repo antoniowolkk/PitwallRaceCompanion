@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 import itertools
 import logging
-import os
 import queue
 import shutil
 import subprocess
@@ -23,6 +22,8 @@ import wave
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from urllib.request import urlopen
+
+from .config import data_dir
 
 log = logging.getLogger(__name__)
 
@@ -39,13 +40,8 @@ MAX_WAIT_S = 15.0  # a non-urgent line that waited longer than this is stale, dr
 STYLE = f"k{KOKORO_SPEED}-p{PIPER_RATE}-d{RADIO_DRIVE}"  # in the cache key, so a sound change re-renders
 
 Synth = Callable[[str, Path], None]  # render text to a WAV file
-Loader = Callable[[Path, str, float], Synth]  # (data dir, voice id, volume) -> Synth
+Loader = Callable[[Path, str, float], Synth]  # (data dir, voice id, volume) -> Synth; called with 1.0
 Player = Callable[[Path], None]  # play a WAV file, blocking
-
-
-def data_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share"
-    return Path(base) / "PitWall"
 
 
 def model_files(engine: str, choice: str, root: Path | None = None) -> list[Path]:
@@ -232,16 +228,32 @@ class Voice:
             self._thread.join(timeout=5)
 
     def _wav(self, text: str) -> Path:
-        key = hashlib.sha1(f"{STYLE}|{self.volume:.2f}|{text}".encode()).hexdigest()[:16]
+        key = hashlib.sha1(f"{STYLE}|{text}".encode()).hexdigest()[:16]
         path = self.cache_dir / f"{key}.wav"
         if not path.exists():
             assert self._synth is not None
             self._synth(text, path)
         return path
 
+    def _at_volume(self, wav: Path) -> Path:
+        volume = self.volume  # read once: the Settings screen can change it any time
+        if volume >= 0.999:
+            return wav
+        import numpy as np
+
+        with wave.open(str(wav)) as src:
+            params = src.getparams()
+            audio = np.frombuffer(src.readframes(src.getnframes()), np.int16)
+        out = self.cache_dir / "_play.wav"
+        with wave.open(str(out), "wb") as dst:
+            dst.setparams(params)
+            dst.writeframes((audio * volume).astype(np.int16).tobytes())
+        return out
+
     def _run(self, warm: list[str]) -> None:
         try:
-            self._synth = self._load(self._root, self.voice_id, self.volume)
+            # Rendered at full volume and cached once; the volume setting applies at play time.
+            self._synth = self._load(self._root, self.voice_id, 1.0)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             log.exception("voice failed to load")
@@ -268,7 +280,7 @@ class Voice:
                 log.info("voice dropped stale line: %s", text)
                 continue
             try:
-                wav = self._wav(text)
+                wav = self._at_volume(self._wav(text))
                 if on_start:
                     on_start()
                 self._player(wav)

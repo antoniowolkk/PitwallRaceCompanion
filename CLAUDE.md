@@ -30,7 +30,8 @@ uv run pytest
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
 - **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
-- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Confirmed OK by the user in a live race (volume, voice, timing). Still to do: settings screen, Lite mode, pit window call (needs session data from ACC graphics).
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Confirmed OK by the user in a live race (volume, voice, timing). Merged as PR #4.
+- **Phase 2 settings** (`feat/phase2-settings`): Settings screen (voice, engine, volume, test voice, which calls, subtitles on/off and size), saved to `%LOCALAPPDATA%\PitWall\settings.json`, applied live. Still to do in phase 2: Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
@@ -85,6 +86,10 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change).
+
+HTTP: `GET /api/status`, `GET /api/settings`, `PUT /api/settings` (partial JSON, 400 on a bad value), `POST /api/voice/test` (radio check, 409 when the voice is off).
+
+Settings: `config.Prefs` is the single source; `settings.json` is loaded at start and CLI flags (`--voice`, `--engine`, `--volume`) override it for that run only. Changing voice or engine builds a new `Voice` and swaps it into the poller; volume is applied at play time (cache stays full volume, no re-render); "which calls" filters by priority after the engine runs, so cooldowns stay right.
 
 Radio rules: code decides when, `calls.toml` says what. Calls are silent while paused. Tyre calls need the problem to last `tyre_sustain_s`; every kind has a cooldown in `thresholds.toml [calls]`. Urgent (priority 1) skips the gap between calls; queued calls older than `expire_s` are dropped. The two race recordings give 5 calls each, a sane rate; replay them through `EventEngine` when changing rules.

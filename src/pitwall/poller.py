@@ -43,6 +43,7 @@ class Poller:
         self.connected = False
         self.last: dict[str, Any] | None = None
         self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
+        self.max_priority = 3  # Settings "radio calls": 1 urgent only, 2 important, 3 all
         self._read_error_logged = False
 
     def status(self) -> dict[str, Any]:
@@ -93,7 +94,8 @@ class Poller:
 
         if self._engine:
             now = self._clock()
-            self._radio.push(self._engine.update(snap, now))
+            calls = self._engine.update(snap, now)  # always run, so cooldowns stay right
+            self._radio.push([c for c in calls if c.priority <= self.max_priority])
             call = self._radio.next(now)
             if call:
                 log.info("radio: %s", call.text)
@@ -109,6 +111,14 @@ class Poller:
                     )
                 else:
                     await self._send_radio(msg)
+
+    @property
+    def voice(self) -> Voice | None:
+        return self._voice
+
+    def set_voice(self, voice: Voice | None) -> None:
+        """Swap the voice live; the new status goes out on the next tick."""
+        self._voice = voice
 
     async def _send_radio(self, msg: dict[str, Any]) -> None:
         msg["time"] = time.strftime("%H:%M:%S")
