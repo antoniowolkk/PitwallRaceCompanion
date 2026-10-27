@@ -110,5 +110,5 @@ def test_poller_speaks_released_calls_and_reports_voice_status(tmp_path):
     asyncio.run(scenario())
     wait_for(lambda: len(played) == 1)
     voice.close()
-    assert synth.rendered == ["Yellow flag, careful, no overtaking."]
+    assert synth.rendered == ["Yellow flag, careful. No overtaking."]
     assert [m["voice"] for m in sent if m["type"] == "status"][0] == "ready"

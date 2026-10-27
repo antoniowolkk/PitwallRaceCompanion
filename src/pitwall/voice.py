@@ -21,6 +21,9 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 VOICES = {"female": "en_US-amy-medium", "male": "en_US-lessac-medium"}
+SPEECH_RATE = 0.9  # Piper length_scale: below 1 is faster
+RADIO_DRIVE = 3.0  # compression strength; 1 is barely any
+STYLE = f"r{SPEECH_RATE}-d{RADIO_DRIVE}"  # in the cache key, so a sound change re-renders
 
 Synth = Callable[[str, Path], None]  # render text to a WAV file
 Player = Callable[[Path], None]  # play a WAV file, blocking
@@ -62,15 +65,34 @@ def piper_synth(path: Path, volume: float) -> Synth:
         config=PiperConfig.from_dict(json.loads(Path(f"{path}.json").read_text(encoding="utf-8"))),
         session=onnxruntime.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"]),
     )
-    config = SynthesisConfig(volume=volume)
+    # A touch faster than the default reads more like radio than an audiobook.
+    config = SynthesisConfig(length_scale=SPEECH_RATE)
 
     def synth(text: str, out: Path) -> None:
+        import numpy as np
+
+        chunks = list(voice.synthesize(text, syn_config=config))
+        audio = np.concatenate([c.audio_float_array for c in chunks]) if chunks else np.zeros(1, np.float32)
         tmp = out.with_suffix(".tmp")
         with wave.open(str(tmp), "wb") as wav:
-            voice.synthesize_wav(text, wav, syn_config=config)
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(voice.config.sample_rate)
+            wav.writeframes(radio_loud(audio, volume).tobytes())
         tmp.replace(out)  # never leave a half-written cache file
 
     return synth
+
+
+def radio_loud(audio, volume: float):
+    """Soft-clip compression: lifts the quiet parts of speech so it cuts through engine
+    noise like team radio. Piper only normalises the peak, which leaves speech quiet."""
+    import numpy as np
+
+    peak = float(np.max(np.abs(audio))) or 1.0
+    x = audio / peak
+    y = np.tanh(RADIO_DRIVE * x) / np.tanh(RADIO_DRIVE)
+    return (np.clip(y * volume, -1.0, 1.0) * 32767).astype(np.int16)
 
 
 def play(path: Path) -> None:
@@ -90,7 +112,7 @@ class Voice:
     def __init__(
         self,
         choice: str = "female",
-        volume: float = 0.8,
+        volume: float = 1.0,
         root: Path | None = None,
         load: Callable[[Path, float], Synth] = piper_synth,
         player: Player = play,
@@ -133,7 +155,7 @@ class Voice:
             self._thread.join(timeout=5)
 
     def _wav(self, text: str) -> Path:
-        key = hashlib.sha1(f"{self.volume:.2f}|{text}".encode()).hexdigest()[:16]
+        key = hashlib.sha1(f"{STYLE}|{self.volume:.2f}|{text}".encode()).hexdigest()[:16]
         path = self.cache_dir / f"{key}.wav"
         if not path.exists():
             assert self._synth is not None

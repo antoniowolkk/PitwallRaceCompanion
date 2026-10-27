@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--lan", action="store_true", help="allow other devices on the network")
     p.add_argument("--voice", choices=["female", "male", "off"], default="female", help="engineer voice")
-    p.add_argument("--volume", type=float, default=0.8, help="voice volume, 0 to 1")
+    p.add_argument("--volume", type=float, default=1.0, help="voice volume, 0 to 1")
     p.set_defaults(func=_serve)
 
     sub = p.add_subparsers()

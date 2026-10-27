@@ -14,7 +14,10 @@ from typing import Any
 from .models import Snapshot
 
 DEFAULT_CALLS = Path(__file__).with_name("calls.toml")
-TYRES = ("Front left", "Front right", "Rear left", "Rear right")
+TYRES = ("front left", "front right", "rear left", "rear right")
+
+_ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
+_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
 
 
 def load_calls(path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -22,8 +25,29 @@ def load_calls(path: Path | None = None) -> dict[str, dict[str, Any]]:
         return tomllib.load(f)
 
 
-def fmt_lap(ms: int) -> str:
-    return f"{ms // 60000}:{ms % 60000 / 1000:06.3f}"
+# Numbers go to the voice as words: TTS reads "1:50.260" like a stopwatch, an
+# engineer says "one fifty point two". The subtitle shows the same words.
+def words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        return _TENS[n // 10] + ("" if n % 10 == 0 else " " + _ONES[n % 10])
+    rest = n % 100
+    return f"{_ONES[n // 100]} hundred" + ("" if rest == 0 else " and " + words(rest))
+
+
+def spoken_decimal(x: float) -> str:
+    tenths = round(x * 10)
+    return f"{words(tenths // 10)} point {_ONES[tenths % 10]}"
+
+
+def spoken_lap(ms: int) -> str:
+    """1:50.260 -> "one fifty point two", 2:05.311 -> "two oh five point three"."""
+    tenths = ms // 100
+    minutes, rest = divmod(tenths, 600)
+    secs, tenth = divmod(rest, 10)
+    sec_words = words(secs) if secs >= 10 else "oh " + _ONES[secs]
+    return f"{words(minutes)} {sec_words} point {_ONES[tenth]}"
 
 
 @dataclass(slots=True)
@@ -98,7 +122,7 @@ class EventEngine:
         if level == 2 and (worse or (prev is not None and snap.laps > prev.laps)):
             return [self._call("fuel_critical", now, snap)]  # again every lap until the stop
         if level == 1 and worse:
-            return [self._call("fuel_warn", now, snap, laps=f"{laps:.0f}")]
+            return [self._call("fuel_warn", now, snap, laps=words(round(laps)))]
         return []
 
     def _tyres(self, snap: Snapshot, now: float) -> list[Call | None]:
@@ -117,7 +141,7 @@ class EventEngine:
             if now - since >= self._sustain:
                 calls.append(self._call(
                     kind, now, snap, tyre=TYRES[i],
-                    temp=f"{snap.tyre_temp_c[i]:.0f}", psi=f"{snap.tyre_pressure_psi[i]:.1f}",
+                    temp=words(round(snap.tyre_temp_c[i])), psi=spoken_decimal(snap.tyre_pressure_psi[i]),
                 ))
         return calls
 
@@ -125,7 +149,7 @@ class EventEngine:
         if prev is None or snap.laps < 2 or snap.best_ms is None or snap.laps == prev.laps:
             return []
         if prev.best_ms is not None and snap.best_ms < prev.best_ms:
-            return [self._call("best_lap", now, snap, time=fmt_lap(snap.best_ms))]
+            return [self._call("best_lap", now, snap, time=spoken_lap(snap.best_ms))]
         return []
 
 

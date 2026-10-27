@@ -1,7 +1,7 @@
 import asyncio
 
 from pitwall.config import load_thresholds
-from pitwall.events import Call, EventEngine, Radio, load_calls
+from pitwall.events import Call, EventEngine, Radio, load_calls, spoken_decimal, spoken_lap, words
 from pitwall.models import Snapshot
 from pitwall.poller import Poller
 
@@ -22,10 +22,11 @@ def kinds(calls: list[Call]) -> list[str]:
 
 
 def test_every_call_line_formats():
-    fields = dict(laps="3", tyre="Front left", temp="97", psi="27.9", time="1:51.025")
+    fields = dict(laps="three", tyre="front left", temp="ninety seven", psi="twenty seven point nine", time="one fifty one point zero")
     for kind, line in load_calls().items():
         assert line["priority"] in (1, 2, 3), kind
-        assert line["text"].format(**fields).endswith("."), kind
+        text = line["text"].format(**fields)
+        assert text[0].isupper() and text[-1] in ".!", kind
 
 
 def test_flag_calls_on_change_with_cooldown():
@@ -43,7 +44,7 @@ def test_fuel_warns_once_then_critical_every_lap_and_rearms_after_refuel():
     e = engine()
     assert kinds(e.update(snap(fuel_laps_left=3.5, laps=10), 0)) == []
     calls = e.update(snap(fuel_laps_left=2.9, laps=10), 1)
-    assert kinds(calls) == ["fuel_warn"] and "about 3 laps" in calls[0].text
+    assert kinds(calls) == ["fuel_warn"] and "About three laps" in calls[0].text
     assert kinds(e.update(snap(fuel_laps_left=2.5, laps=10), 2)) == []
     assert kinds(e.update(snap(fuel_laps_left=1.4, laps=10), 3)) == ["fuel_critical"]
     assert kinds(e.update(snap(fuel_laps_left=1.3, laps=11), 4)) == []  # crossed near the line
@@ -63,7 +64,7 @@ def test_hot_tyre_needs_to_last_then_cools_down():
     assert kinds(e.update(snap(**hot), 0)) == []
     assert kinds(e.update(snap(**hot), 5)) == []
     calls = e.update(snap(**hot), 10)
-    assert kinds(calls) == ["tyre_hot"] and calls[0].text == "Rear right is running hot, 97 degrees."
+    assert kinds(calls) == ["tyre_hot"] and calls[0].text == "The rear right's running hot, ninety seven degrees. Go easy on it."
     assert kinds(e.update(snap(**hot), 60)) == []  # cooldown
 
 
@@ -79,14 +80,14 @@ def test_high_pressure_call():
     high = dict(tyre_temp_c=OK_TYRES["tyre_temp_c"], tyre_pressure_psi=(27.4, 27.9, 27.4, 27.5))
     e.update(snap(**high), 0)
     calls = e.update(snap(**high), 10)
-    assert [c.text for c in calls] == ["Pressures are high, Front right at 27.9."]
+    assert [c.text for c in calls] == ["Pressures are a bit high. The front right's at twenty seven point nine."]
 
 
 def test_personal_best_after_first_timed_laps_only():
     e = engine()
     e.update(snap(laps=1, best_ms=118_150, last_ms=118_150), 0)
     calls = e.update(snap(laps=2, best_ms=117_822, last_ms=117_822), 1)
-    assert [c.text for c in calls] == ["Personal best, 1:57.822."]
+    assert [c.text for c in calls] == ["Nice one, personal best, one fifty seven point eight."]
     assert kinds(e.update(snap(laps=3, best_ms=117_822, last_ms=119_000), 2)) == []
 
 
@@ -141,3 +142,12 @@ def test_poller_sends_radio_calls_and_keeps_log():
     assert [m["kind"] for m in radio] == ["flag_yellow"]
     assert radio[0]["priority"] == 1 and radio[0]["lap"] == 1
     assert list(poller.radio_log) == radio
+
+
+def test_numbers_are_spoken_like_an_engineer():
+    assert words(3) == "three" and words(97) == "ninety seven" and words(40) == "forty"
+    assert words(105) == "one hundred and five"
+    assert spoken_decimal(27.6) == "twenty seven point six"
+    assert spoken_lap(110_260) == "one fifty point two"
+    assert spoken_lap(125_311) == "two oh five point three"
+    assert spoken_lap(142_005) == "two twenty two point zero"
