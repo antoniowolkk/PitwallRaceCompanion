@@ -44,14 +44,19 @@ def _wheels(w: Any) -> tuple[float, float, float, float]:
     return (w.front_left, w.front_right, w.rear_left, w.rear_right)
 
 
+def _text(value: str) -> str:
+    """Static strings come NUL-padded to their fixed buffer size."""
+    return value.split("\x00", 1)[0].strip()
+
+
 def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     """Map pyaccsharedmemory Physics/Graphics/Static maps to a Snapshot."""
     fuel_per_lap = float(graphics.fuel_per_lap)
     return Snapshot(
         status=_STATUS.get(graphics.status.name, "live"),
         session=_SESSION.get(graphics.session_type.name, "unknown"),
-        car=static.car_model,
-        track=static.track,
+        car=_text(static.car_model),
+        track=_text(static.track),
         speed_kmh=float(physics.speed_kmh),
         gear=gear_label(int(physics.gear)),
         rpm=int(physics.rpm),

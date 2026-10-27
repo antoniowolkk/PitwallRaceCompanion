@@ -33,14 +33,14 @@ uv run pytest
 
 Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 
-- [ ] Status shows ACC **Waiting** before a session, **Connected** once on track.
-- [ ] Speed, gear, RPM, fuel, fuel laps, tyre temps and pressures, lap count, current/last/best lap match the game.
-- [ ] Gear mapping right (ACC physics gear: 0 = R, 1 = N, 2 = 1st).
+- [x] Status shows ACC **Waiting** before a session, **Connected** once on track. (2026-10-27, Ferrari 296 GT3, Nürburgring 24h practice)
+- [ ] Speed, gear, RPM, fuel, fuel laps, tyre temps and pressures, lap count, current/last/best lap match the game. Speed, gear, RPM, fuel, tyres and current lap match a raw shared memory dump; last/best lap still to check after a full lap.
+- [x] Gear mapping right (ACC physics gear: 0 = R, 1 = N, 2 = 1st). Raw gear 1 shows N.
 - [ ] Flags show (yellow, blue, etc.) when the game shows them.
 - [ ] Pause > 5 s: does it flip to Waiting? If yes, fix staleness logic in `telemetry/acc.py` (see below).
 - [ ] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall.
 - [ ] Record a ~10 min session with `pitwall record` for future replay tests.
-- [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget".
+- [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS still to check.
 - [ ] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3.
 - [ ] Optional: open the dashboard from a phone with `--lan`.
 
@@ -49,6 +49,8 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - `pyaccsharedmemory` 1.0.0 opens the named maps with `ACCESS_WRITE`, so they exist (all zeros, status ACC_OFF) even when ACC is not running, and our open handle keeps the **last values alive after ACC exits**. So `AccSource` treats frozen physics + graphics `packed_id` for 5 s as disconnected. Unverified: whether graphics `packed_id` keeps ticking while paused.
 - `AccSource` reads the maps with the module's `read_physic_map` / `read_graphics_map` / `read_static_map` directly, not `read_shared_memory()`, which returns None whenever physics is unchanged and deep-copies every call.
 - ACC reports "no lap time" as INT32_MAX; `models.lap_ms` maps it to None.
+- Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
+- The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
 - Mock track is tuned (ACCEL 3.0 m/s²) for ~1:40 laps; tests rely on 95–120 s lap times.
 

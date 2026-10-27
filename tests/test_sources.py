@@ -88,8 +88,13 @@ def test_from_acc_maps_library_fields():
         current_time=34_000, last_time=104_321, best_time=NO_TIME,
         is_valid_lap=1, is_in_pit_lane=0,
     )
-    static = SimpleNamespace(car_model="ferrari_296_gt3", track="barcelona", max_rpm=8500, max_fuel=120.0)
+    # Real ACC pads static strings with NULs.
+    static = SimpleNamespace(
+        car_model="ferrari_296_gt3" + "\x00" * 18, track="barcelona" + "\x00" * 24, max_rpm=8500, max_fuel=120.0
+    )
     snap = from_acc(physics, graphics, static)
+    assert snap.car == "ferrari_296_gt3"
+    assert snap.track == "barcelona"
     assert snap.status == "live"
     assert snap.session == "race"
     assert snap.flag == "yellow"
