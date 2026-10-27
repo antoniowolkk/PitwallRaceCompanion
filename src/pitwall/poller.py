@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .events import EventEngine, Radio
 from .models import diff
 from .telemetry import TelemetrySource
+from .voice import Voice
 
 log = logging.getLogger(__name__)
 
@@ -22,13 +26,23 @@ class Poller:
         broadcast: Broadcast,
         hz: float = 10.0,
         unavailable_reason: str = "",
+        engine: EventEngine | None = None,
+        radio: Radio | None = None,
+        voice: Voice | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.source = source
         self._broadcast = broadcast
         self._period = 1.0 / hz
         self._unavailable_reason = unavailable_reason
+        self._engine = engine
+        self._radio = radio or Radio()
+        self._voice = voice
+        self._voice_status = self._voice.status if self._voice else "off"
+        self._clock = clock
         self.connected = False
         self.last: dict[str, Any] | None = None
+        self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
         self._read_error_logged = False
 
     def status(self) -> dict[str, Any]:
@@ -41,12 +55,14 @@ class Poller:
             "acc": acc,
             "source": self.source.name if self.source else None,
             "reason": self._unavailable_reason,
-            # Filled in by later phases.
-            "ai": "off",
-            "voice": "off",
+            "ai": "off",  # phase 3
+            "voice": self._voice_status,
         }
 
     async def tick(self) -> None:
+        if self._voice and self._voice.status != self._voice_status:
+            self._voice_status = self._voice.status  # loading -> ready happens in the voice thread
+            await self._broadcast(self.status())
         if self.source is None:
             return
         try:
@@ -61,6 +77,9 @@ class Poller:
         if (snap is not None) != self.connected:
             self.connected = snap is not None
             self.last = None
+            if self._engine:
+                self._engine.reset()
+            self._radio.clear()
             log.info("ACC %s", "connected" if self.connected else "waiting")
             await self._broadcast(self.status())
 
@@ -71,6 +90,30 @@ class Poller:
         self.last = wire
         if changes:
             await self._broadcast({"type": "telemetry", "data": changes})
+
+        if self._engine:
+            now = self._clock()
+            self._radio.push(self._engine.update(snap, now))
+            call = self._radio.next(now)
+            if call:
+                log.info("radio: %s", call.text)
+                msg = {"type": "radio", **call.to_wire()}
+                if self._voice and self._voice.active:
+                    # Subtitle appears when the voice starts, which can be seconds later
+                    # if the line still has to be rendered.
+                    loop = asyncio.get_running_loop()
+                    self._voice.say(
+                        call.text,
+                        on_start=lambda: asyncio.run_coroutine_threadsafe(self._send_radio(msg), loop),
+                        priority=call.priority,
+                    )
+                else:
+                    await self._send_radio(msg)
+
+    async def _send_radio(self, msg: dict[str, Any]) -> None:
+        msg["time"] = time.strftime("%H:%M:%S")
+        self.radio_log.append(msg)
+        await self._broadcast(msg)
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()

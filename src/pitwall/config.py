@@ -26,4 +26,7 @@ class Settings:
     poll_hz: float = 10.0
     host: str = "127.0.0.1"
     port: int = 8765
+    voice: str = "male"  # female | male | off
+    engine: str = "kokoro"  # kokoro | piper
+    volume: float = 1.0
     thresholds: dict[str, Any] = field(default_factory=load_thresholds)

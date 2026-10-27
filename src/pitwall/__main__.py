@@ -4,6 +4,9 @@
     pitwall --source mock           serve with synthetic telemetry
     pitwall --source replay --replay laps.jsonl
     pitwall record laps.jsonl       record a real ACC session (Windows)
+    pitwall --voice female          engineer voice: male (default), female, off
+    pitwall --engine piper          faster, flatter voice engine (default kokoro)
+    pitwall voices download         fetch the voice model (Kokoro 120 MB, Piper 63 MB a voice)
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ def _serve(args: argparse.Namespace) -> None:
         host="0.0.0.0" if args.lan else "127.0.0.1",
         mock_speed=args.mock_speed,
         replay_path=args.replay,
+        voice=args.voice,
+        volume=args.volume,
+        engine=args.engine,
     )
     if args.source:
         settings.source = args.source
@@ -61,6 +67,18 @@ def _record(args: argparse.Namespace) -> None:
         print(f"Saved {frames} frames.")
 
 
+def _voices(args: argparse.Namespace) -> None:
+    from .voice import VOICES, download, model_files
+
+    for choice in VOICES[args.engine] if args.which == "all" else [args.which]:
+        files = model_files(args.engine, choice)
+        if all(f.exists() for f in files):
+            print(f"{args.engine} {choice}: already in {files[0].parent}")
+            continue
+        print(f"{args.engine} {choice}: downloading {VOICES[args.engine][choice]} ...")
+        print(f"{args.engine} {choice}: saved to {download(args.engine, choice)[0].parent}")
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
@@ -70,6 +88,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hz", type=float, default=10.0, help="telemetry polls per second")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--lan", action="store_true", help="allow other devices on the network")
+    p.add_argument("--voice", choices=["female", "male", "off"], default="male", help="engineer voice")
+    p.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro", help="voice engine")
+    p.add_argument("--volume", type=float, default=1.0, help="voice volume, 0 to 1")
     p.set_defaults(func=_serve)
 
     sub = p.add_subparsers()
@@ -77,6 +98,12 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("out", type=Path)
     r.add_argument("--hz", type=float, default=10.0)
     r.set_defaults(func=_record)
+
+    v = sub.add_parser("voices", help="manage the engineer voices")
+    v.add_argument("action", choices=["download"])
+    v.add_argument("which", choices=["female", "male", "all"], nargs="?", default="all")
+    v.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro")
+    v.set_defaults(func=_voices)
 
     args = p.parse_args(argv)
     args.func(args)

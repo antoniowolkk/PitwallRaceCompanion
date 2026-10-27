@@ -20,14 +20,17 @@ uv run pitwall --source mock --mock-speed 4
 uv run pitwall record recordings/x.jsonl  # Windows: record a real ACC session
 uv run pitwall --replay recordings/x.jsonl
 uv run pitwall --lan                      # allow phone/tablet on the network
+uv run pitwall voices download            # Kokoro model + voices, 120 MB, to %LOCALAPPDATA%\PitWall\kokoro
+uv run pitwall --voice female --volume 0.8 # male (default, bm_george), female (af_heart), off
+uv run pitwall --engine piper             # fallback engine; run voices download --engine piper first
 uv run pytest
 ```
 
 ## Status (2026-10-27)
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
-- **Not yet done:** Phase 1 test on Windows with ACC running (checklist below). This is the Phase 1 gate.
-- **Next:** Phase 2 — event engine, canned calls, Piper voice, subtitles and radio log, settings screen, Lite mode.
+- **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Confirmed OK by the user in a live race (volume, voice, timing). Still to do: settings screen, Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
@@ -53,6 +56,10 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - Before you click Drive (grid screen) ACC reports `ACC_LIVE` but physics is all zeros: fuel 0, gear R, tyres 0 psi (30 s at Monza). `acc.on_track` needs non-zero tyre pressures, else the source returns None (Waiting), so no fake empty tank reaches the event engine.
 - In a race at Spa, ACC's `best_time` stayed on lap 1 (3:46) all race though every lap was valid; at Monza it updated normally. `acc.BestLap` tracks the best from completed valid laps and keeps the lower of the two.
 - In that race fuel stayed at 56.0 L all race because fuel usage was off in the race settings (confirmed). So `spa_race.jsonl` is no good for testing fuel calls; record another session with fuel usage on for that.
+- Voice choice (2026-10-27): Piper sounded too quiet and robotic in a race; after a listening test against Kokoro `af_heart`, `am_michael` and Piper amy, the pick was Kokoro `bm_george`. Kokoro int8 (`kokoro-onnx` 0.6.1) loads in ~3 s but renders a line in ~2.8 s even on all 8 cores (2 threads: ~3.2 s). So every fixed line plus the fuel warning for 1-3 laps is pre-rendered at startup (cached on disk after the first run), the subtitle is sent when the voice starts, not when the call fires, and the voice queue is urgent-first with non-urgent lines dropped after 15 s. Process: ~240 MB working set / 536 MB private, ~9% CPU while rendering. The fp32/fp16 Kokoro models are untried and may render faster on CPU.
+- Loudness: TTS only normalises the peak, so speech was quiet under engine noise. `voice.radio_loud` soft-clips (tanh, drive 3): about +9.5 dB average level. Numbers go to the voice as words (`events.words`, `spoken_lap`: "one fifty point two"); the subtitle shows the same words.
+- Piper (`piper-tts` 1.8, GPL-3.0, fine for personal use, check before distributing): model load ~10 s, so it runs in the voice thread at startup (pill shows Loading). `PiperVoice.load` uses default onnxruntime options (big memory arena, all cores); `voice.piper_synth` builds the session itself with the arena off and 2 threads: 164 MB working set / 365 MB private instead of 268 / 629, and a new line still renders in 0.4-0.6 s. Lines without placeholders are pre-rendered; every spoken line is cached as WAV in `%LOCALAPPDATA%\PitWall\cache`.
+- Voice plays on the gaming PC (`winsound`, blocking, in the voice thread), not in the browser: no autoplay limits, and the driver hears it in the headset. A dashboard on a phone shows subtitles only.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
@@ -65,7 +72,10 @@ src/pitwall/
   __main__.py          CLI (serve, record)
   config.py            Settings, thresholds loader
   models.py            Snapshot (player car), wire format, diff
-  poller.py            poll loop, connect/disconnect, sends only changes
+  poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
+  events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
+  calls.toml           canned radio lines and priorities
+  voice.py             TTS (Kokoro default, Piper fallback): model load, WAV cache, priority playback thread, downloads
   server.py            FastAPI: static dashboard, /ws, /api/status
   telemetry/acc.py     ACC shared memory (Windows)
   telemetry/mock.py    synthetic laps
@@ -75,4 +85,6 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect).
+
+Radio rules: code decides when, `calls.toml` says what. Calls are silent while paused. Tyre calls need the problem to last `tyre_sustain_s`; every kind has a cooldown in `thresholds.toml [calls]`. Urgent (priority 1) skips the gap between calls; queued calls older than `expire_s` are dropped. The two race recordings give 5 calls each, a sane rate; replay them through `EventEngine` when changing rules.

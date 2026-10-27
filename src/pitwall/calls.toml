@@ -1,0 +1,57 @@
+# Canned radio lines, said the way a relaxed race engineer would. Short, spoken as written,
+# and the subtitle shows the same words. Numbers arrive as spoken words.
+# Placeholders: {laps} "three", {tyre} "front left", {temp} "ninety seven",
+# {psi} "twenty seven point six", {time} "one fifty point two".
+# priority: 1 urgent (jumps the queue), 2 normal, 3 info.
+
+[fuel_warn]
+priority = 2
+text = "Heads up, fuel's getting low. About {laps} laps left in the tank."
+
+[fuel_critical]
+priority = 1
+text = "Box, box. Fuel's critical, pit this lap."
+
+[tyre_hot]
+priority = 2
+text = "The {tyre}'s running hot, {temp} degrees. Go easy on it."
+
+[tyre_pressure_high]
+priority = 2
+text = "Pressures are a bit high. The {tyre}'s at {psi}."
+
+[best_lap]
+priority = 3
+text = "Nice one, personal best, {time}."
+
+[flag_green]
+priority = 2
+text = "Green flag, let's go!"
+
+[flag_yellow]
+priority = 1
+text = "Yellow flag, careful. No overtaking."
+
+[flag_blue]
+priority = 2
+text = "Blue flag, faster car coming. Let it by."
+
+[flag_white]
+priority = 2
+text = "White flag, slow car up ahead."
+
+[flag_black]
+priority = 1
+text = "Black flag. That's us out, bring it in."
+
+[flag_penalty]
+priority = 1
+text = "We've got a penalty. Check the screen."
+
+[flag_orange]
+priority = 2
+text = "Orange flag. Something's up with the car, check it."
+
+[flag_chequered]
+priority = 2
+text = "Chequered flag! Good job, bring it home."

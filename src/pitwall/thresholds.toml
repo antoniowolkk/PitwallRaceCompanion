@@ -9,6 +9,18 @@ temp_c = [80.0, 90.0]
 pressure_psi = [26.0, 27.0]
 
 [fuel]
-# Fuel tile turns to warning below this many laps left.
+# Fuel tile turns to warning below this many laps left; the radio calls at the same points.
 warn_laps = 3.0
 critical_laps = 1.5
+
+[calls]
+# A hot tyre or high pressure must last this long before a call, so one kerb does not trigger it.
+tyre_sustain_s = 10.0
+# Minimum time between two calls of the same kind.
+tyre_cooldown_s = 300.0
+flag_cooldown_s = 15.0
+# Fuel critical repeats each lap, but not twice in a row when it crosses near the line.
+fuel_cooldown_s = 30.0
+# Radio queue: gap between calls (urgent calls skip it); queued calls older than this are dropped.
+spacing_s = 4.0
+expire_s = 15.0

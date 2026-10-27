@@ -48,7 +48,13 @@
     const label = s.source && s.source !== "acc" ? `${acc[2]} (${s.source})` : acc[2];
     setPill("st-acc", acc[0], acc[1], label);
     setPill("st-ai", "idle", "–", s.ai === "off" ? "Off" : s.ai);
-    setPill("st-voice", "idle", "–", s.voice === "off" ? "Off" : s.voice);
+    const voice = {
+      ready: ["good", "●", "On"],
+      loading: ["idle", "○", "Loading"],
+      missing: ["warn", "▲", "Not downloaded"],
+      error: ["bad", "✕", "Error"],
+    }[s.voice] || ["idle", "–", "Off"];
+    setPill("st-voice", ...voice);
     document.body.dataset.acc = s.acc;
 
     const banner = $("banner");
@@ -165,6 +171,45 @@
     $("car-track").textContent = [t.car, t.track].filter(Boolean).join(" · ").replaceAll("_", " ");
   }
 
+  // Radio: subtitle shows the latest call ~4 s, the log keeps the last 20, newest first.
+  const PRIORITY = { 1: "▲ Urgent", 2: "● Call", 3: "○ Info" };
+  const SUBTITLE_MS = 4000, LOG_MAX = 20;
+  let subtitleTimer = null;
+
+  function showSubtitle(call) {
+    const box = document.querySelector(".subtitle");
+    const p = $("subtitle");
+    box.dataset.priority = call.priority;
+    p.className = "";
+    p.textContent = call.text;
+    clearTimeout(subtitleTimer);
+    subtitleTimer = setTimeout(() => {
+      p.classList.add("fading");
+      subtitleTimer = setTimeout(() => {
+        delete box.dataset.priority;
+        p.className = "quiet";
+        p.textContent = "Radio quiet";
+      }, 400);
+    }, SUBTITLE_MS);
+  }
+
+  function addLog(call) {
+    const list = $("radio-log");
+    list.querySelector(".empty")?.remove();
+    const li = document.createElement("li");
+    li.dataset.priority = call.priority;
+    for (const [cls, text] of [
+      ["when", call.time], ["lap", `L${call.lap}`], ["prio", PRIORITY[call.priority] || ""], ["text", call.text],
+    ]) {
+      const span = document.createElement("span");
+      span.className = cls;
+      span.textContent = text;
+      li.append(span);
+    }
+    list.prepend(li);
+    while (list.children.length > LOG_MAX) list.lastElementChild.remove();
+  }
+
   function schedule() {
     if (!state.dirty) {
       state.dirty = true;
@@ -186,6 +231,15 @@
         Object.assign(state.tele, msg.data);
         if ("status" in msg.data) renderStatus();
         break;
+      case "radio":
+        showSubtitle(msg);
+        addLog(msg);
+        return;
+      case "radio_log":
+        $("radio-log").replaceChildren();
+        if (!msg.calls.length) $("radio-log").innerHTML = '<li class="empty">No calls yet.</li>';
+        msg.calls.forEach(addLog);
+        return;
     }
     schedule();
   }
