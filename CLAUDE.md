@@ -41,7 +41,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - [x] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. ACC writes `ACC_OFF` on exit, so Waiting is instant; restart reconnected on its own once the session went live. Session change (Nürburgring → Spa) works too.
 - [x] Record a ~10 min session with `pitwall record` for future replay tests. `recordings/spa_race.jsonl` (local only, gitignored): 5-lap race at Spa, 12:49, 7,620 frames at 10 Hz.
 - [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS still to check.
-- [ ] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3.
+- [x] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3. Kept 80-90 °C and 26.0-27.0 psi after the Spa race; reasons in the file.
 - [ ] Optional: open the dashboard from a phone with `--lan`.
 
 ## Things learned while building
