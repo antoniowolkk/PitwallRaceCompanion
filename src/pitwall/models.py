@@ -49,6 +49,14 @@ class Snapshot:
     lap_valid: bool = True
     flag: str = "none"
     in_pit_lane: bool = False
+    # Pit window, raw as ACC sends them: units still to confirm from a real race with a
+    # mandatory stop (acc_shared_memory_rs docs say seconds; other tools use milliseconds).
+    in_pit: bool = False
+    session_time_left: float = 0.0
+    pit_window_start: int = 0
+    pit_window_end: int = 0
+    mandatory_pit_done: bool = False
+    missing_mandatory_pits: int = 0
 
     def to_wire(self) -> dict[str, Any]:
         """Rounded values, so the diff only sends changes a driver can see."""
@@ -74,6 +82,12 @@ class Snapshot:
             "lap_valid": self.lap_valid,
             "flag": self.flag,
             "in_pit_lane": self.in_pit_lane,
+            "in_pit": self.in_pit,
+            "session_time_left": round(self.session_time_left),
+            "pit_window_start": self.pit_window_start,
+            "pit_window_end": self.pit_window_end,
+            "mandatory_pit_done": self.mandatory_pit_done,
+            "missing_mandatory_pits": self.missing_mandatory_pits,
         }
 
     @classmethod
