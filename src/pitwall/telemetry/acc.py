@@ -85,6 +85,35 @@ def hold_on_pause(snap: Snapshot, held: Snapshot | None) -> Snapshot:
     return replace(held, status="pause")
 
 
+class BestLap:
+    """ACC's best_time stayed on lap 1 for a whole race at Spa (all laps valid), so track it here.
+
+    A lap counts when the lap counter steps up and the lap was valid just before;
+    ACC fills last_time in the same frame. The lower of ours and ACC's wins.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._best: int | None = None
+        self._laps: int | None = None
+        self._valid = True
+        self._key: tuple[str, str, str] | None = None
+
+    def apply(self, snap: Snapshot) -> Snapshot:
+        key = (snap.session, snap.car, snap.track)
+        if key != self._key or (self._laps is not None and snap.laps < self._laps):
+            self.reset()
+            self._key = key
+        if self._laps is not None and snap.laps > self._laps and self._valid and snap.last_ms:
+            self._best = snap.last_ms if self._best is None else min(self._best, snap.last_ms)
+        self._laps = snap.laps
+        self._valid = snap.lap_valid
+        best = min((b for b in (snap.best_ms, self._best) if b), default=None)
+        return snap if best == snap.best_ms else replace(snap, best_ms=best)
+
+
 class AccSource:
     name = "acc"
 
@@ -100,6 +129,7 @@ class AccSource:
         self._asm = acc.accSharedMemory()
         self._static: Any = None
         self._held: Snapshot | None = None
+        self._best = BestLap()
         self._ids: tuple[int, int] | None = None
         self._last_change = clock()
         self._stale_after_s = stale_after_s
@@ -130,6 +160,7 @@ class AccSource:
             self._static = acc.read_static_map(self._asm.staticSM)
         snap = hold_on_pause(from_acc(physics, graphics, self._static), self._held)
         if snap.status == "live":
+            snap = self._best.apply(snap)
             self._held = snap
         return snap
 

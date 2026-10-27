@@ -4,7 +4,7 @@ from enum import Enum
 from types import SimpleNamespace
 
 from pitwall.models import NO_TIME, Snapshot
-from pitwall.telemetry.acc import from_acc, hold_on_pause
+from pitwall.telemetry.acc import BestLap, from_acc, hold_on_pause
 from pitwall.telemetry.mock import MockSource
 from pitwall.telemetry.replay import Recorder, ReplaySource
 
@@ -114,3 +114,28 @@ def test_pause_holds_last_live_values():
     # Nothing to hold yet (started while paused): pass through.
     assert hold_on_pause(zeroed, None) is zeroed
     assert hold_on_pause(live, None) is live
+
+
+def test_best_lap_tracks_laps_acc_ignores():
+    # Spa race, 2026-10-27: ACC kept best_time on the slow first lap all race.
+    best = BestLap()
+    acc_best = 226_786
+    laps = [(1, 226_786), (2, 142_302), (3, 149_877), (4, 142_005), (5, 143_290)]
+    snap = best.apply(Snapshot(session="race", track="Spa", laps=0))
+    assert snap.best_ms is None
+    for done, last in laps:
+        best.apply(Snapshot(session="race", track="Spa", laps=done - 1, current_ms=100_000))
+        snap = best.apply(Snapshot(session="race", track="Spa", laps=done, last_ms=last, best_ms=acc_best))
+    assert snap.best_ms == 142_005
+
+
+def test_best_lap_skips_invalid_laps_and_resets_per_session():
+    best = BestLap()
+    best.apply(Snapshot(session="practice", track="Spa", laps=0, lap_valid=False))
+    snap = best.apply(Snapshot(session="practice", track="Spa", laps=1, last_ms=130_000))
+    assert snap.best_ms is None  # cut the track, does not count
+    best.apply(Snapshot(session="practice", track="Spa", laps=1))
+    snap = best.apply(Snapshot(session="practice", track="Spa", laps=2, last_ms=141_000))
+    assert snap.best_ms == 141_000
+    snap = best.apply(Snapshot(session="race", track="Spa", laps=0))
+    assert snap.best_ms is None
