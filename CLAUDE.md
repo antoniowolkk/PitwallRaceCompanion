@@ -30,7 +30,7 @@ uv run pytest
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
 - **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
-- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Still to do: settings screen, Lite mode, pit window call (needs session data from ACC graphics).
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Confirmed OK by the user in a live race (volume, voice, timing). Still to do: settings screen, Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
