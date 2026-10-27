@@ -61,7 +61,7 @@
       banner.hidden = false;
       banner.textContent = s.acc === "unavailable"
         ? `Telemetry unavailable: ${s.reason}. Run with --source mock to test without the game.`
-        : "Waiting for ACC. Start a session from Steam; Pit Wall connects on its own.";
+        : "Waiting for ACC. Start a session from Steam; Pit Wall connects once you are on track.";
     }
   }
 

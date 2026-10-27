@@ -4,7 +4,7 @@ from enum import Enum
 from types import SimpleNamespace
 
 from pitwall.models import NO_TIME, Snapshot
-from pitwall.telemetry.acc import BestLap, from_acc, hold_on_pause
+from pitwall.telemetry.acc import BestLap, from_acc, hold_on_pause, on_track
 from pitwall.telemetry.mock import MockSource
 from pitwall.telemetry.replay import Recorder, ReplaySource
 
@@ -139,3 +139,9 @@ def test_best_lap_skips_invalid_laps_and_resets_per_session():
     assert snap.best_ms == 141_000
     snap = best.apply(Snapshot(session="race", track="Spa", laps=0))
     assert snap.best_ms is None
+
+
+def test_empty_car_on_grid_screen_is_not_on_track():
+    # Monza race, 2026-10-27: 30 s of status live with fuel 0, gear R, tyres 0 before Drive.
+    assert not on_track(Snapshot(status="live", session="race", fuel_l=0.0, gear="R"))
+    assert on_track(Snapshot(status="live", fuel_l=0.0, tyre_pressure_psi=(25.4, 25.5, 25.3, 25.4)))

@@ -85,6 +85,14 @@ def hold_on_pause(snap: Snapshot, held: Snapshot | None) -> Snapshot:
     return replace(held, status="pause")
 
 
+def on_track(snap: Snapshot) -> bool:
+    """ACC says live on the grid screen before Drive (30 s at Monza) but sends an empty car.
+
+    Tyre pressures are never all zero once the car is out, even with an empty tank.
+    """
+    return any(p > 0 for p in snap.tyre_pressure_psi)
+
+
 class BestLap:
     """ACC's best_time stayed on lap 1 for a whole race at Spa (all laps valid), so track it here.
 
@@ -159,6 +167,8 @@ class AccSource:
         if self._static is None:
             self._static = acc.read_static_map(self._asm.staticSM)
         snap = hold_on_pause(from_acc(physics, graphics, self._static), self._held)
+        if not on_track(snap):
+            return None  # grid screen, or paused with nothing to hold yet
         if snap.status == "live":
             snap = self._best.apply(snap)
             self._held = snap
