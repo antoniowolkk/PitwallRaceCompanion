@@ -126,7 +126,10 @@
     $("last").textContent = fmtLap(t.last_ms);
     $("best").textContent = fmtLap(t.best_ms);
     const d = $("last-delta");
-    if (t.last_ms != null && t.best_ms != null) {
+    if (t.last_ms != null && t.last_ms === t.best_ms) {
+      d.textContent = "● Best lap";
+      d.className = "sub delta-good";
+    } else if (t.last_ms != null && t.best_ms != null) {
       const delta = (t.last_ms - t.best_ms) / 1000;
       d.textContent = `${delta <= 0 ? "▼" : "▲"} ${delta >= 0 ? "+" : ""}${delta.toFixed(3)} to best`;
       d.className = `sub ${delta <= 0 ? "delta-good" : "delta-bad"}`;
