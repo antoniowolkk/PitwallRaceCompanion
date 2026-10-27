@@ -48,7 +48,13 @@
     const label = s.source && s.source !== "acc" ? `${acc[2]} (${s.source})` : acc[2];
     setPill("st-acc", acc[0], acc[1], label);
     setPill("st-ai", "idle", "–", s.ai === "off" ? "Off" : s.ai);
-    setPill("st-voice", "idle", "–", s.voice === "off" ? "Off" : s.voice);
+    const voice = {
+      ready: ["good", "●", "On"],
+      loading: ["idle", "○", "Loading"],
+      missing: ["warn", "▲", "Not downloaded"],
+      error: ["bad", "✕", "Error"],
+    }[s.voice] || ["idle", "–", "Off"];
+    setPill("st-voice", ...voice);
     document.body.dataset.acc = s.acc;
 
     const banner = $("banner");

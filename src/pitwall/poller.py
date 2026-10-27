@@ -12,6 +12,7 @@ from typing import Any
 from .events import EventEngine, Radio
 from .models import diff
 from .telemetry import TelemetrySource
+from .voice import Voice
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class Poller:
         unavailable_reason: str = "",
         engine: EventEngine | None = None,
         radio: Radio | None = None,
+        voice: Voice | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.source = source
@@ -35,6 +37,8 @@ class Poller:
         self._unavailable_reason = unavailable_reason
         self._engine = engine
         self._radio = radio or Radio()
+        self._voice = voice
+        self._voice_status = self._voice.status if self._voice else "off"
         self._clock = clock
         self.connected = False
         self.last: dict[str, Any] | None = None
@@ -51,12 +55,14 @@ class Poller:
             "acc": acc,
             "source": self.source.name if self.source else None,
             "reason": self._unavailable_reason,
-            # Filled in by later phases.
-            "ai": "off",
-            "voice": "off",
+            "ai": "off",  # phase 3
+            "voice": self._voice_status,
         }
 
     async def tick(self) -> None:
+        if self._voice and self._voice.status != self._voice_status:
+            self._voice_status = self._voice.status  # loading -> ready happens in the voice thread
+            await self._broadcast(self.status())
         if self.source is None:
             return
         try:
@@ -93,6 +99,8 @@ class Poller:
                 msg = {"type": "radio", **call.to_wire(), "time": time.strftime("%H:%M:%S")}
                 self.radio_log.append(msg)
                 log.info("radio: %s", call.text)
+                if self._voice:
+                    self._voice.say(call.text)
                 await self._broadcast(msg)
 
     async def run(self) -> None:

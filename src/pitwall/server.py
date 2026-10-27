@@ -11,9 +11,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
-from .events import EventEngine, Radio
+from .events import EventEngine, Radio, load_calls
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
+from .voice import Voice
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).with_name("web")
@@ -45,8 +46,15 @@ def client_config(settings: Settings) -> dict[str, Any]:
     }
 
 
-def create_app(settings: Settings, source: TelemetrySource | None = None, run_poller: bool = True) -> FastAPI:
+def create_app(
+    settings: Settings,
+    source: TelemetrySource | None = None,
+    run_poller: bool = True,
+    voice: Voice | None = None,
+) -> FastAPI:
     hub = Hub()
+    if voice is None:
+        voice = Voice(settings.voice, settings.volume) if run_poller else Voice("off")
     reason = ""
     if source is None:
         try:
@@ -59,14 +67,18 @@ def create_app(settings: Settings, source: TelemetrySource | None = None, run_po
         source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
         engine=EventEngine(settings.thresholds),
         radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
+        voice=voice,
     )
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Lines without placeholders are rendered up front so they play at once.
+        voice.start(line["text"] for line in load_calls().values() if "{" not in line["text"])
         task = asyncio.create_task(poller.run()) if run_poller else None
         try:
             yield
         finally:
+            voice.close()
             if task:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

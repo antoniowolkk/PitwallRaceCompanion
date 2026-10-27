@@ -6,7 +6,8 @@ Product spec: [docs/PRD.md](docs/PRD.md).
 
 ## Status
 
-Phase 1 in progress: core service, ACC shared memory reader, mock and replay modes, Live dashboard.
+Phase 1 done: core service, ACC shared memory reader, mock and replay modes, Live dashboard.
+Phase 2 in progress: event engine and canned radio calls with subtitles, radio log and a Piper voice are in; settings screen and Lite mode are next.
 
 ## Run
 
@@ -14,7 +15,8 @@ Needs [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pitwall                    # ACC on Windows, mock telemetry elsewhere
+uv run pitwall voices download all  # engineer voices, ~63 MB each (once)
+uv run pitwall                      # ACC on Windows, mock telemetry elsewhere
 ```
 
 Open http://localhost:8765. Start ACC from Steam as usual; Pit Wall connects when a session goes live.
@@ -26,7 +28,10 @@ uv run pitwall --source mock --mock-speed 4      # synthetic laps, 4x time
 uv run pitwall record recordings/barcelona.jsonl # Windows: record a real session
 uv run pitwall --replay recordings/barcelona.jsonl
 uv run pitwall --lan                             # let a tablet or phone on the network connect
+uv run pitwall --voice male --volume 0.6         # voice: female (default), male, off
 ```
+
+The voice is [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) with the `en_US-amy-medium` and `en_US-lessac-medium` voices, run on the CPU and played on the PC.
 
 ## Test
 

@@ -20,6 +20,8 @@ uv run pitwall --source mock --mock-speed 4
 uv run pitwall record recordings/x.jsonl  # Windows: record a real ACC session
 uv run pitwall --replay recordings/x.jsonl
 uv run pitwall --lan                      # allow phone/tablet on the network
+uv run pitwall voices download all        # Piper voices, ~63 MB each, to %LOCALAPPDATA%\PitWall\voices
+uv run pitwall --voice male --volume 0.6  # female (default), male, off
 uv run pytest
 ```
 
@@ -27,7 +29,7 @@ uv run pytest
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
 - **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
-- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Still to do: Piper voice, settings screen, Lite mode, pit window call (needs session data from ACC graphics).
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Piper voice done (female amy / male lessac, played on the PC). Still to do: settings screen, Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
@@ -53,6 +55,8 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - Before you click Drive (grid screen) ACC reports `ACC_LIVE` but physics is all zeros: fuel 0, gear R, tyres 0 psi (30 s at Monza). `acc.on_track` needs non-zero tyre pressures, else the source returns None (Waiting), so no fake empty tank reaches the event engine.
 - In a race at Spa, ACC's `best_time` stayed on lap 1 (3:46) all race though every lap was valid; at Monza it updated normally. `acc.BestLap` tracks the best from completed valid laps and keeps the lower of the two.
 - In that race fuel stayed at 56.0 L all race because fuel usage was off in the race settings (confirmed). So `spa_race.jsonl` is no good for testing fuel calls; record another session with fuel usage on for that.
+- Piper (`piper-tts` 1.8, GPL-3.0, fine for personal use, check before distributing): model load ~10 s, so it runs in the voice thread at startup (pill shows Loading). `PiperVoice.load` uses default onnxruntime options (big memory arena, all cores); `voice.piper_synth` builds the session itself with the arena off and 2 threads: 164 MB working set / 365 MB private instead of 268 / 629, and a new line still renders in 0.4-0.6 s. Lines without placeholders are pre-rendered; every spoken line is cached as WAV in `%LOCALAPPDATA%\PitWall\cache`.
+- Voice plays on the gaming PC (`winsound`, blocking, in the voice thread), not in the browser: no autoplay limits, and the driver hears it in the headset. A dashboard on a phone shows subtitles only.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
@@ -68,6 +72,7 @@ src/pitwall/
   poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
   events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
   calls.toml           canned radio lines and priorities
+  voice.py             Piper TTS: model load, WAV cache, playback thread, voice download
   server.py            FastAPI: static dashboard, /ws, /api/status
   telemetry/acc.py     ACC shared memory (Windows)
   telemetry/mock.py    synthetic laps
