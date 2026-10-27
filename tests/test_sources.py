@@ -3,8 +3,8 @@ import json
 from enum import Enum
 from types import SimpleNamespace
 
-from pitwall.models import NO_TIME
-from pitwall.telemetry.acc import from_acc
+from pitwall.models import NO_TIME, Snapshot
+from pitwall.telemetry.acc import from_acc, hold_on_pause
 from pitwall.telemetry.mock import MockSource
 from pitwall.telemetry.replay import Recorder, ReplaySource
 
@@ -102,3 +102,15 @@ def test_from_acc_maps_library_fields():
     assert snap.tyre_temp_c == (84, 82, 79, 80)
     assert snap.last_ms == 104_321
     assert snap.best_ms is None
+
+
+def test_pause_holds_last_live_values():
+    live = Snapshot(status="live", fuel_l=61.0, gear="3", tyre_temp_c=(80, 81, 79, 78))
+    zeroed = Snapshot(status="pause", fuel_l=0.0, gear="R")
+    held = hold_on_pause(zeroed, live)
+    assert held.status == "pause"
+    assert held.fuel_l == 61.0
+    assert held.gear == "3"
+    # Nothing to hold yet (started while paused): pass through.
+    assert hold_on_pause(zeroed, None) is zeroed
+    assert hold_on_pause(live, None) is live

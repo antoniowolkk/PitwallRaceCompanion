@@ -39,7 +39,8 @@
   function renderStatus() {
     const s = state.status;
     if (!s) return;
-    const acc = {
+    const paused = s.acc === "connected" && state.tele.status === "pause";
+    const acc = paused ? ["warn", "❚❚", "Paused"] : {
       connected: ["good", "●", "Connected"],
       waiting: ["idle", "○", "Waiting"],
       unavailable: ["bad", "✕", "Unavailable"],
@@ -51,7 +52,10 @@
     document.body.dataset.acc = s.acc;
 
     const banner = $("banner");
-    if (s.acc === "connected") {
+    if (paused) {
+      banner.hidden = false;
+      banner.textContent = "Game paused. Values update again when you resume.";
+    } else if (s.acc === "connected") {
       banner.hidden = true;
     } else {
       banner.hidden = false;
@@ -151,6 +155,7 @@
         break;
       case "telemetry":
         Object.assign(state.tele, msg.data);
+        if ("status" in msg.data) renderStatus();
         break;
     }
     schedule();

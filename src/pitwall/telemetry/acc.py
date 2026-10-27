@@ -1,8 +1,8 @@
 """ACC shared memory reader, player car only. Windows only.
 
-Field names follow pyaccsharedmemory 1.0.0. Still to verify in a real session:
-whether graphics.packed_id keeps ticking while paused, and that the map
-really goes stale (not back to ACC_OFF) when the game closes.
+Field names follow pyaccsharedmemory 1.0.0. Verified in a real session: both
+packed_ids keep ticking while paused, and physics reads as zeros then. Still to
+verify: that the map really goes stale (not back to ACC_OFF) when the game closes.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from ..models import Snapshot, gear_label, lap_ms
@@ -77,6 +78,13 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     )
 
 
+def hold_on_pause(snap: Snapshot, held: Snapshot | None) -> Snapshot:
+    """ACC zeroes physics while paused (fuel 0, gear R, tyres 0), so keep the last live values."""
+    if snap.status != "pause" or held is None:
+        return snap
+    return replace(held, status="pause")
+
+
 class AccSource:
     name = "acc"
 
@@ -91,6 +99,7 @@ class AccSource:
         # Creates the named maps even before ACC runs; they read as ACC_OFF then.
         self._asm = acc.accSharedMemory()
         self._static: Any = None
+        self._held: Snapshot | None = None
         self._ids: tuple[int, int] | None = None
         self._last_change = clock()
         self._stale_after_s = stale_after_s
@@ -102,6 +111,7 @@ class AccSource:
         graphics = acc.read_graphics_map(self._asm.graphicSM)
         if graphics.status == acc.ACC_STATUS.ACC_OFF:
             self._static = None
+            self._held = None
             return None
 
         # Our open handle keeps the last values alive after ACC exits,
@@ -113,11 +123,15 @@ class AccSource:
             self._last_change = now
         elif now - self._last_change > self._stale_after_s:
             self._static = None
+            self._held = None
             return None
 
         if self._static is None:
             self._static = acc.read_static_map(self._asm.staticSM)
-        return from_acc(physics, graphics, self._static)
+        snap = hold_on_pause(from_acc(physics, graphics, self._static), self._held)
+        if snap.status == "live":
+            self._held = snap
+        return snap
 
     def close(self) -> None:  # pragma: no cover - Windows only
         self._asm.close()
