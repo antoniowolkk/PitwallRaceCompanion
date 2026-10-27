@@ -1,0 +1,55 @@
+# Canned radio lines. One short sentence each; spoken as written (phase 2 voice).
+# Placeholders: {laps} laps of fuel left, {tyre} e.g. "Front left", {temp} °C, {psi}, {time} lap time.
+# priority: 1 urgent (jumps the queue), 2 normal, 3 info.
+
+[fuel_warn]
+priority = 2
+text = "Fuel is getting low, about {laps} laps left."
+
+[fuel_critical]
+priority = 1
+text = "Fuel critical, box this lap."
+
+[tyre_hot]
+priority = 2
+text = "{tyre} is running hot, {temp} degrees."
+
+[tyre_pressure_high]
+priority = 2
+text = "Pressures are high, {tyre} at {psi}."
+
+[best_lap]
+priority = 3
+text = "Personal best, {time}."
+
+[flag_green]
+priority = 2
+text = "Green flag, go go go."
+
+[flag_yellow]
+priority = 1
+text = "Yellow flag, careful, no overtaking."
+
+[flag_blue]
+priority = 2
+text = "Blue flag, faster car behind, let it through."
+
+[flag_white]
+priority = 2
+text = "White flag, slow car ahead."
+
+[flag_black]
+priority = 1
+text = "Black flag, you are disqualified, box now."
+
+[flag_penalty]
+priority = 1
+text = "You have a penalty, check the screen."
+
+[flag_orange]
+priority = 2
+text = "Orange flag, check the car."
+
+[flag_chequered]
+priority = 2
+text = "Chequered flag, bring it home."

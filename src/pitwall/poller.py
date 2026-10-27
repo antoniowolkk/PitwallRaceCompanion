@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .events import EventEngine, Radio
 from .models import diff
 from .telemetry import TelemetrySource
 
@@ -22,13 +25,20 @@ class Poller:
         broadcast: Broadcast,
         hz: float = 10.0,
         unavailable_reason: str = "",
+        engine: EventEngine | None = None,
+        radio: Radio | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.source = source
         self._broadcast = broadcast
         self._period = 1.0 / hz
         self._unavailable_reason = unavailable_reason
+        self._engine = engine
+        self._radio = radio or Radio()
+        self._clock = clock
         self.connected = False
         self.last: dict[str, Any] | None = None
+        self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
         self._read_error_logged = False
 
     def status(self) -> dict[str, Any]:
@@ -61,6 +71,9 @@ class Poller:
         if (snap is not None) != self.connected:
             self.connected = snap is not None
             self.last = None
+            if self._engine:
+                self._engine.reset()
+            self._radio.clear()
             log.info("ACC %s", "connected" if self.connected else "waiting")
             await self._broadcast(self.status())
 
@@ -71,6 +84,16 @@ class Poller:
         self.last = wire
         if changes:
             await self._broadcast({"type": "telemetry", "data": changes})
+
+        if self._engine:
+            now = self._clock()
+            self._radio.push(self._engine.update(snap, now))
+            call = self._radio.next(now)
+            if call:
+                msg = {"type": "radio", **call.to_wire(), "time": time.strftime("%H:%M:%S")}
+                self.radio_log.append(msg)
+                log.info("radio: %s", call.text)
+                await self._broadcast(msg)
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()

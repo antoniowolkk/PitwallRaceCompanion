@@ -27,7 +27,8 @@ uv run pytest
 
 - **Phase 1 merged** (PR #1): core service, ACC reader, mock + replay, 10 Hz WebSocket, Live HUD dashboard. Built and tested on macOS with mock data only.
 - **Not yet done:** Phase 1 test on Windows with ACC running (checklist below). This is the Phase 1 gate.
-- **Next:** Phase 2 — event engine, canned calls, Piper voice, subtitles and radio log, settings screen, Lite mode.
+- **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
+- **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done. Still to do: Piper voice, settings screen, Lite mode, pit window call (needs session data from ACC graphics).
 
 ## Phase 1 Windows checklist
 
@@ -65,7 +66,9 @@ src/pitwall/
   __main__.py          CLI (serve, record)
   config.py            Settings, thresholds loader
   models.py            Snapshot (player car), wire format, diff
-  poller.py            poll loop, connect/disconnect, sends only changes
+  poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
+  events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
+  calls.toml           canned radio lines and priorities
   server.py            FastAPI: static dashboard, /ws, /api/status
   telemetry/acc.py     ACC shared memory (Windows)
   telemetry/mock.py    synthetic laps
@@ -75,4 +78,6 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect).
+
+Radio rules: code decides when, `calls.toml` says what. Calls are silent while paused. Tyre calls need the problem to last `tyre_sustain_s`; every kind has a cooldown in `thresholds.toml [calls]`. Urgent (priority 1) skips the gap between calls; queued calls older than `expire_s` are dropped. The two race recordings give 5 calls each, a sane rate; replay them through `EventEngine` when changing rules.

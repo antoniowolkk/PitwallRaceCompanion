@@ -296,11 +296,34 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
   text-transform: uppercase;
   clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
 }
-.subtitle p { margin: 0; font-size: 30px; font-weight: 600; line-height: 1.25; }
+.subtitle p { margin: 0; font-size: 30px; font-weight: 600; line-height: 1.25; transition: opacity .4s; }
 .subtitle p.quiet { color: var(--text-2); font-size: 18px; font-weight: 400; }
+.subtitle p.fading { opacity: 0; }
+.subtitle[data-priority="1"] { --accent: var(--crit); }
+.subtitle[data-priority="1"] .tag { background: var(--crit); }
 
 .log ol { margin: 0; padding: 0; list-style: none; }
 .log li.empty { color: var(--text-2); }
+.log li:not(.empty) {
+  display: grid;
+  grid-template-columns: 8ch 5ch 10ch 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 16px;
+}
+.log li:first-child { border-top: 0; }
+.log .when, .log .lap { color: var(--text-2); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.log .prio { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.log li[data-priority="1"] .prio { color: var(--crit); }
+.log li[data-priority="2"] .prio { color: var(--maroon-tint); }
+
+@media (max-width: 760px) {
+  .subtitle p { font-size: 24px; }
+  .log li:not(.empty) { grid-template-columns: 8ch 1fr; }
+  .log .lap { display: none; }
+  .log .text { grid-column: 1 / -1; }
+}
 
 /* Disconnected: dim live numbers */
 body[data-acc="waiting"] :is(.strip, .rpm, .tiles),

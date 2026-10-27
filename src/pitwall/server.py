@@ -11,6 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
+from .events import EventEngine, Radio
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
 
@@ -53,7 +54,12 @@ def create_app(settings: Settings, source: TelemetrySource | None = None, run_po
         except SourceUnavailable as e:
             reason = str(e)
             log.warning("telemetry source unavailable: %s", e)
-    poller = Poller(source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason)
+    calls = settings.thresholds["calls"]
+    poller = Poller(
+        source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
+        engine=EventEngine(settings.thresholds),
+        radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
+    )
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -83,6 +89,7 @@ def create_app(settings: Settings, source: TelemetrySource | None = None, run_po
         await websocket.send_json(poller.status())
         if poller.last is not None:
             await websocket.send_json({"type": "telemetry", "data": poller.last})
+        await websocket.send_json({"type": "radio_log", "calls": list(poller.radio_log)})
         hub.clients.add(websocket)
         try:
             while True:
