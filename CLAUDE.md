@@ -40,7 +40,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - [x] Pause > 5 s: does it flip to Waiting? No: both packed_ids keep ticking while paused. But physics reads as zeros then, so `AccSource` now holds the last live values and the dashboard shows ACC **Paused**.
 - [x] Quit ACC: back to Waiting within ~5 s. Restart: reconnects without restarting Pit Wall. ACC writes `ACC_OFF` on exit, so Waiting is instant; restart reconnected on its own once the session went live. Session change (Nürburgring → Spa) works too.
 - [x] Record a ~10 min session with `pitwall record` for future replay tests. Local only (gitignored): `recordings/spa_race.jsonl`, 5-lap race at Spa, 12:49, fuel usage off; `recordings/monza_race_fuel.jsonl`, 3-lap race at Monza, 7:07, real fuel (~3.1 L/lap) and damage. Use the Monza one for fuel calls.
-- [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS still to check.
+- [ ] Check FPS impact (game counter, with and without Pit Wall) and CPU/RAM in Task Manager. Targets in PRD "Performance budget". CPU/RAM done: 0.04% CPU, ~48 MB working set while connected. FPS: 65 with Pit Wall running (Monza); the without-Pit-Wall run is skipped for now.
 - [x] Tune tyre temp and pressure windows in `thresholds.toml` for the Ferrari 296 GT3. Kept 80-90 °C and 26.0-27.0 psi after the Spa race; reasons in the file.
 - [ ] Optional: open the dashboard from a phone with `--lan`.
 
