@@ -14,7 +14,7 @@
       <a class="tab active" aria-current="page" href="#live"><span>Live</span></a>
       <span class="tab" aria-disabled="true" title="Phase 4"><span>Coach</span></span>
       <span class="tab" aria-disabled="true" title="Phase 5"><span>Setup</span></span>
-      <span class="tab" aria-disabled="true" title="Phase 2"><span>Settings</span></span>
+      <a class="tab" href="#settings"><span>Settings</span></a>
     </nav>
     <ul class="status" aria-label="Status">
       <li id="st-core" class="pill" data-level="bad"><span class="ico" aria-hidden="true">✕</span><span class="lbl">Core</span><span class="val">Offline</span></li>
@@ -86,6 +86,54 @@
       <h2>Radio log</h2>
       <ol id="radio-log"><li class="empty">No calls yet.</li></ol>
     </section>
+  </main>
+
+  <main id="settings" hidden>
+    <form class="settings" id="settings-form" autocomplete="off">
+      <section class="hud" aria-labelledby="set-voice">
+        <h2 id="set-voice">Engineer voice</h2>
+        <fieldset class="choice">
+          <legend>Voice</legend>
+          <label><input type="radio" name="voice" value="male"><span><b>Male</b> George, British</span></label>
+          <label><input type="radio" name="voice" value="female"><span><b>Female</b> Heart, American</span></label>
+          <label><input type="radio" name="voice" value="off"><span><b>Off</b> Subtitles only</span></label>
+        </fieldset>
+        <fieldset class="choice">
+          <legend>Engine</legend>
+          <label><input type="radio" name="engine" value="kokoro"><span><b>Kokoro</b> Natural; new lines take ~3 s</span></label>
+          <label><input type="radio" name="engine" value="piper"><span><b>Piper</b> Flatter; fast and light</span></label>
+        </fieldset>
+        <p class="note" id="voice-missing" hidden></p>
+        <div class="row">
+          <label for="volume">Volume</label>
+          <input type="range" id="volume" name="volume" min="0" max="100" step="5">
+          <output id="volume-out" for="volume">100%</output>
+          <button type="button" class="btn" id="voice-test">▶ Test voice</button>
+        </div>
+      </section>
+
+      <section class="hud" aria-labelledby="set-calls">
+        <h2 id="set-calls">Radio calls</h2>
+        <fieldset class="choice">
+          <legend>Which calls</legend>
+          <label><input type="radio" name="calls" value="all"><span><b>All</b> Flags, fuel, tyres and personal bests</span></label>
+          <label><input type="radio" name="calls" value="important"><span><b>Important</b> No personal bests</span></label>
+          <label><input type="radio" name="calls" value="urgent"><span><b>Urgent only</b> Yellow, black, penalty, fuel critical</span></label>
+        </fieldset>
+      </section>
+
+      <section class="hud" aria-labelledby="set-subs">
+        <h2 id="set-subs">Subtitles</h2>
+        <label class="toggle"><input type="checkbox" name="subtitles"><span>Show radio calls as subtitles</span></label>
+        <fieldset class="choice">
+          <legend>Size</legend>
+          <label><input type="radio" name="subtitle_size" value="normal"><span><b>Normal</b></span></label>
+          <label><input type="radio" name="subtitle_size" value="large"><span><b>Large</b> For a screen further away</span></label>
+        </fieldset>
+      </section>
+
+      <p class="saved" id="settings-state" role="status" aria-live="polite"></p>
+    </form>
   </main>
 
   <script src="app.js"></script>

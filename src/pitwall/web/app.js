@@ -240,6 +240,9 @@
         if (!msg.calls.length) $("radio-log").innerHTML = '<li class="empty">No calls yet.</li>';
         msg.calls.forEach(addLog);
         return;
+      case "settings":
+        applySettings(msg);
+        return;
     }
     schedule();
   }
@@ -259,6 +262,103 @@
       retry = Math.min(retry * 2, 5000);
     };
   }
+
+  // Screens: #live (default) and #settings.
+  function route() {
+    const screen = location.hash === "#settings" ? "settings" : "live";
+    for (const id of ["live", "settings"]) $(id).hidden = id !== screen;
+    document.querySelectorAll(".tabs a.tab").forEach((a) => {
+      const on = a.getAttribute("href") === `#${screen}`;
+      a.classList.toggle("active", on);
+      if (on) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+    if (screen === "live") schedule();
+  }
+  window.addEventListener("hashchange", route);
+  route();
+
+  // Settings: the server owns them; every change is sent at once and comes back to
+  // every open dashboard as a "settings" message.
+  const form = $("settings-form");
+  let settings = null;
+
+  function setState(level, text) {
+    const el = $("settings-state");
+    el.dataset.level = level;
+    el.textContent = text;
+  }
+
+  function applySettings(s) {
+    settings = s;
+    for (const name of ["voice", "engine", "calls", "subtitle_size"]) {
+      const input = form.querySelector(`input[name="${name}"][value="${s[name]}"]`);
+      if (input) input.checked = true;
+    }
+    form.elements.subtitles.checked = s.subtitles;
+    if (document.activeElement !== $("volume")) $("volume").value = Math.round(s.volume * 100);
+    $("volume-out").textContent = `${Math.round(s.volume * 100)}%`;
+    form.querySelectorAll('input[name="subtitle_size"]').forEach((i) => (i.disabled = !s.subtitles));
+
+    const missing = s.voice !== "off" && !s.downloaded[s.engine][s.voice];
+    const note = $("voice-missing");
+    note.hidden = !missing;
+    if (missing) {
+      note.innerHTML = "";
+      note.append("▲ This voice is not downloaded yet. Run ");
+      const code = document.createElement("code");
+      code.textContent = `uv run pitwall voices download ${s.voice} --engine ${s.engine}`;
+      note.append(code, " and choose it again.");
+    }
+    $("voice-test").disabled = s.voice === "off" || missing;
+
+    document.body.dataset.subtitles = s.subtitles ? "on" : "off";
+    document.body.dataset.subtitleSize = s.subtitle_size;
+  }
+
+  async function save(changes) {
+    setState("idle", "○ Saving…");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || res.statusText);
+      applySettings(body);
+      setState("good", "● Saved");
+    } catch (err) {
+      if (settings) applySettings(settings); // put the form back to what is really set
+      setState("bad", `✕ Not saved: ${err.message}`);
+    }
+  }
+
+  form.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.name === "volume") save({ volume: Number(t.value) / 100 });
+    else if (t.name === "subtitles") save({ subtitles: t.checked });
+    else if (t.type === "radio") save({ [t.name]: t.value });
+  });
+  $("volume").addEventListener("input", (e) => {
+    $("volume-out").textContent = `${e.target.value}%`;
+  });
+  form.addEventListener("submit", (e) => e.preventDefault());
+
+  $("voice-test").addEventListener("click", async () => {
+    const btn = $("voice-test");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/voice/test", { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || res.statusText);
+      setState("good", "● Radio check sent");
+    } catch (err) {
+      setState("bad", `✕ ${err.message}`);
+    } finally {
+      setTimeout(() => (btn.disabled = settings && settings.voice === "off"), 2000);
+    }
+  });
 
   connect();
 })();
