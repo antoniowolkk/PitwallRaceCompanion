@@ -105,3 +105,25 @@ def test_lite_mode_switches_variants_off_live():
         assert poller.engine.variants == {} and client.get("/api/status").json()["ai"] == "lite"
         client.put("/api/settings", json={"lite": False})
         assert poller.engine.variants == variants and poller.ai_status == "ready"
+
+
+def test_check_rejects_what_the_first_real_run_got_wrong():
+    for bad, original in [
+        ("Chequered flag! Nice lap, take the win.", "Chequered flag! Good job, bring it home."),
+        ("Your {tyre} is hot at {temp}. Drive slow.", "The {tyre}'s running hot, {temp} degrees. Go easy on it."),
+        ("Orange flag. Car issue - fix it quickly.", "Orange flag. Something's up with the car, check it."),
+        ("Orange flag. Check car, problem detected.", "Orange flag. Something's up with the car, check it."),
+        ("Window closes {minutes} from now, stop and box ASAP.", "Window closes in about {minutes}, we still need to stop. Box soon."),
+        ("Window closes in {minutes}, need to stop soon � box now!", "Window closes in about {minutes}, we still need to stop. Box soon."),
+        ("Pressures a bit high. {tyre} at {psi}.", "Pressures are a bit high. The {tyre}'s at {psi}."),
+        ("Great call, personal best {time}.", "Nice one, personal best, {time}."),
+    ]:
+        assert wording.check(bad, original) is None, bad
+    assert wording.check("Yellow flag, stay back. No overtaking.", "Yellow flag, careful. No overtaking.")
+
+
+def test_check_rejects_garbled_and_wrong_meaning_lines_from_second_run():
+    assert wording.check("Yellow flag, be careful. No overt: overtake.", "Yellow flag, careful. No overtaking.") is None
+    for bad in ("Stop's complete, good job. Window's secure.", "Stop's completed, great effort. Window's closed."):
+        assert wording.check(bad, "Stop's done, nice work. Window's covered.") is None
+    assert wording.check("Stop's done, well done. Window's covered.", "Stop's done, nice work. Window's covered.")

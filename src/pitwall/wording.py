@@ -30,19 +30,30 @@ MAX_WORDS = 18
 
 SYSTEM = (
     "You are the race engineer on a GT3 team radio in Assetto Corsa Competizione. "
-    "You talk to your driver like a relaxed, friendly British engineer: short, clear, casual, "
-    "never dramatic. Only rewrite what you are given; never add facts or numbers."
+    "You talk to your driver like a relaxed, friendly British engineer, a mate on the radio: "
+    "conversational, warm, contractions welcome, never dramatic and never robotic. "
+    "Only rewrite what you are given; never add facts, results, numbers or new advice."
 )
 
 PROMPT = """Rewrite this radio call {n} different ways.
 Original: "{text}"
 Rules:
-- Same meaning, same urgency. One or two short sentences, at most 15 words.
+- Same meaning, same urgency, same relaxed tone. Do not make it shorter, blunter or more robotic than the original.
+- One or two short sentences, at most 15 words. Plain words only, no dashes, no abbreviations like ASAP.
 - Keep every placeholder in curly braces exactly as written: {placeholders}. Add no other braces.
+  A placeholder is filled with lower-case words, so never start a sentence with one.
 - No digits: numbers only come from the placeholders.
+- Do not claim a result (no winning, no positions) and do not add driving advice the original does not give.
 - Do not say he, she, him or her.
 - Start with a capital letter and end with a full stop or exclamation mark.
 Return JSON: {{"lines": ["...", "..."]}}"""
+
+# Seen in the first qwen3:4b run: wrong facts, bad advice, or robot-speak.
+BANNED = re.compile(
+    r"\b(win|won|winning|victory|podium|first place|slow down|drive slow|fix it|detected|verify|"
+    r"asap|immediately|great call|window's (?:sealed|secure|closed|shut))\b",
+    re.I,
+)
 
 Post = Callable[[str, dict[str, Any]], dict[str, Any]]
 
@@ -64,6 +75,10 @@ def check(line: str, original: str) -> str | None:
     if not line[0].isupper() or line[-1] not in ".!":
         return None
     if re.search(r"\d", line) or re.search(r"\b(he|she|him|her|his|hers)\b", line, re.I):
+        return None
+    if not line.isascii() or re.search(r"\s[-–—]\s|[–—:;]", line) or BANNED.search(line):
+        return None
+    if re.search(r"(^|[.!?]\s+)\{", line):  # placeholders are lower-case words: no sentence may start with one
         return None
     try:
         if placeholders(line) != placeholders(original):

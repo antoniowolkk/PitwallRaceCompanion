@@ -99,8 +99,7 @@ def _lines(args: argparse.Namespace) -> None:
     if args.action == "show":
         variants = wording.load(path, calls)
         for kind, line in calls.items():
-            print(f"{kind}:
-  = {line['text']}")
+            print(f"{kind}:\n  = {line['text']}")
             for text in variants.get(kind, []):
                 print(f"  ~ {text}")
         return
@@ -124,9 +123,8 @@ def _lines(args: argparse.Namespace) -> None:
         return
     lines = warm_lines(Settings(prefs=prefs), wording.load(path, calls))
     print(f"Pre-rendering {len(lines)} lines with {voice.engine} {voice.voice_id} (new ones take a few seconds each) ...")
-    new = voice.render_all(lines, lambda done, n: print(f"  {done}/{n}", end="", flush=True))
-    print(f"
-Done: {new} new voice lines cached.")
+    new = voice.render_all(lines, lambda done, n: print(f"  {done}/{n}", end="\r", flush=True))
+    print(f"\nDone: {new} new voice lines cached.")
 
 
 def main(argv: list[str] | None = None) -> None:
