@@ -32,12 +32,24 @@ def test_every_call_line_formats():
 def test_flag_calls_on_change_with_cooldown():
     e = engine()
     assert kinds(e.update(snap(flag="none"), 0)) == []
-    assert kinds(e.update(snap(flag="yellow"), 1)) == ["flag_yellow"]
-    assert kinds(e.update(snap(flag="yellow"), 2)) == []  # still yellow, no repeat
-    e.update(snap(flag="none"), 3)
-    assert kinds(e.update(snap(flag="yellow"), 4)) == []  # flicker inside cooldown
+    assert kinds(e.update(snap(flag="yellow"), 1)) == []  # must show for a second first
+    assert kinds(e.update(snap(flag="yellow"), 2)) == ["flag_yellow"]
+    assert kinds(e.update(snap(flag="yellow"), 3)) == []  # still yellow, no repeat
+    e.update(snap(flag="none"), 4)
+    e.update(snap(flag="yellow"), 5)
+    assert kinds(e.update(snap(flag="yellow"), 6.5)) == []  # back within the cooldown
     e.update(snap(flag="none"), 20)
-    assert kinds(e.update(snap(flag="yellow"), 21)) == ["flag_yellow"]
+    e.update(snap(flag="yellow"), 21)
+    assert kinds(e.update(snap(flag="yellow"), 22)) == ["flag_yellow"]
+
+
+def test_flicker_is_not_called_and_blue_once_a_minute():
+    e = engine()
+    said = []
+    for t, flag in [(0, "yellow"), (0.1, "none"), (5, "blue"), (6, "blue"), (8, "none"), (30, "blue"), (31.5, "blue"),
+                    (40, "none"), (70, "blue"), (71, "blue")]:
+        said += kinds(e.update(snap(flag=flag), t))
+    assert said == ["flag_blue", "flag_blue"]  # 0.1 s yellow ignored; the blue at 30 s is inside the minute
 
 
 def test_fuel_warns_once_then_critical_every_lap_and_rearms_after_refuel():
@@ -136,6 +148,8 @@ def test_poller_sends_radio_calls_and_keeps_log():
         src.snap = snap(flag="yellow")
         now[0] = 1.0
         await poller.tick()
+        now[0] = 2.0
+        await poller.tick()
 
     asyncio.run(scenario())
     radio = [m for m in sent if m["type"] == "radio"]
@@ -196,5 +210,14 @@ def test_green_flag_once_per_session_unless_after_yellow():
     e = engine()
     said = []
     for i, flag in enumerate(["none", "green", "none", "green", "none", "green", "yellow", "none", "green", "none", "green"]):
-        said += kinds(e.update(snap(flag=flag), i * 20))
+        said += kinds(e.update(snap(flag=flag), i * 20) + e.update(snap(flag=flag), i * 20 + 1.5))
     assert said == ["flag_green", "flag_yellow", "flag_green"]
+
+
+def test_wet_tyres_use_the_wet_window():
+    e = engine()
+    wet = dict(tyre_pressure_psi=(30.4, 30.2, 29.8, 29.9), tyre_temp_c=(62, 61, 73, 72))
+    calls = kinds(e.update(snap(wet_tyres=True, **wet), 0) + e.update(snap(wet_tyres=True, **wet), 30))
+    assert calls == []  # 30.4 psi is fine on wets
+    calls = kinds(e.update(snap(wet_tyres=False, **wet), 31) + e.update(snap(wet_tyres=False, **wet), 60))
+    assert "tyre_pressure_high" in calls  # the same pressure on slicks is high

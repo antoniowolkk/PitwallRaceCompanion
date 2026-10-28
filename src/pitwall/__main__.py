@@ -181,6 +181,7 @@ def _tips(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("phonemizer").setLevel(logging.ERROR)  # "words count mismatch" on every line, harmless
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
     p.add_argument("--source", choices=["acc", "mock", "replay"])
     p.add_argument("--replay", type=Path, help="recording for --source replay")

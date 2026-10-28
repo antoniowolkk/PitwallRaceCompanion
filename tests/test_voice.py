@@ -141,13 +141,16 @@ def test_subtitle_goes_out_when_the_voice_starts(tmp_path):
         sent.append(msg)
 
     src = Src()
-    poller = Poller(src, broadcast, engine=EventEngine(load_thresholds()), radio=Radio(), voice=voice, clock=lambda: 0.0)
+    now = [0.0]
+    poller = Poller(src, broadcast, engine=EventEngine(load_thresholds()), radio=Radio(), voice=voice, clock=lambda: now[0])
     voice.start()
     wait_for(lambda: voice.status == "ready")
 
     async def scenario():
         await poller.tick()
         src.snap = Snapshot(status="live", flag="yellow", tyre_pressure_psi=(26.5,) * 4, tyre_temp_c=(85,) * 4)
+        await poller.tick()
+        now[0] = 1.5  # a flag is called once it has shown for a second
         await poller.tick()
         assert not [m for m in sent if m["type"] == "radio"]  # still rendering, nothing on screen yet
         for _ in range(200):

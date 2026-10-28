@@ -48,6 +48,8 @@ def client_config(settings: Settings) -> dict[str, Any]:
         "type": "config",
         "tyre_temp_c": t["tyres"]["temp_c"],
         "tyre_pressure_psi": t["tyres"]["pressure_psi"],
+        "tyre_temp_c_wet": t["tyres_wet"]["temp_c"],
+        "tyre_pressure_psi_wet": t["tyres_wet"]["pressure_psi"],
         "fuel_warn_laps": t["fuel"]["warn_laps"],
         "fuel_critical_laps": t["fuel"]["critical_laps"],
     }

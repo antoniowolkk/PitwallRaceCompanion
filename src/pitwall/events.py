@@ -100,8 +100,12 @@ class EventEngine:
         self._rng = rng or random.Random()
         self._last_text: dict[str, str] = {}
         tyres, fuel, c = thresholds["tyres"], thresholds["fuel"], thresholds["calls"]
-        self._temp_hot = tyres["temp_c"][1] + 5.0  # same line the dashboard calls "Hot"
-        self._psi_high = tyres["pressure_psi"][1] + 0.5
+        wet = thresholds["tyres_wet"]
+        # (hot temperature, high pressure) for dry and wet tyres: the same lines the dashboard calls "Hot".
+        self._tyre_limits = {
+            False: (tyres["temp_c"][1] + 5.0, tyres["pressure_psi"][1] + 0.5),
+            True: (wet["temp_c"][1] + 5.0, wet["pressure_psi"][1] + 0.5),
+        }
         self._fuel_warn = fuel["warn_laps"]
         self._fuel_crit = fuel["critical_laps"]
         self._sustain = c["tyre_sustain_s"]
@@ -109,7 +113,9 @@ class EventEngine:
             "tyre_hot": c["tyre_cooldown_s"],
             "tyre_pressure_high": c["tyre_cooldown_s"],
             "fuel_critical": c["fuel_cooldown_s"],
+            "flag_blue": c["blue_cooldown_s"],
         }
+        self._flag_hold = c["flag_hold_s"]
         self._flag_cooldown = c["flag_cooldown_s"]
         self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
         self.coach = TurnCoach(thresholds, track_map) if track_map else None
@@ -127,7 +133,8 @@ class EventEngine:
         self._fuel_level = 0  # 0 ok, 1 warn, 2 critical
         self._hot_since: dict[str, float] = {}
         self._pit_said: set[str] = set()  # pit window calls go out once per race
-        self._last_flag = "none"  # last flag other than none
+        self._last_flag = "none"  # last flag called
+        self._flag_seen, self._flag_since, self._flag_done = "none", 0.0, True
         self._green_for: tuple[str, str] | None = None  # session the start green was called in
         if self.coach:
             self.coach.finish()
@@ -135,7 +142,7 @@ class EventEngine:
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
         line = self._lines[kind]
-        cooldown = self._flag_cooldown if kind.startswith("flag_") else self._cooldown.get(kind, 0.0)
+        cooldown = self._cooldown.get(kind, self._flag_cooldown if kind.startswith("flag_") else 0.0)
         last = self._last_call.get(kind)
         if last is not None and now - last < cooldown:
             return None
@@ -167,8 +174,11 @@ class EventEngine:
         return [c for c in calls if c is not None]
 
     def _flags(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
-        if snap.flag == "none" or (prev is not None and prev.flag == snap.flag):
-            return []
+        if snap.flag != self._flag_seen:
+            self._flag_seen, self._flag_since, self._flag_done = snap.flag, now, False
+        if snap.flag == "none" or self._flag_done or now - self._flag_since < self._flag_hold:
+            return []  # a flag is called once it has shown for flag_hold_s, once per showing
+        self._flag_done = True
         last, self._last_flag = self._last_flag, snap.flag
         if snap.flag == "green":
             # On the Nordschleife ACC flashes green after every local yellow zone (6 calls in
@@ -195,9 +205,10 @@ class EventEngine:
     def _tyres(self, snap: Snapshot, now: float) -> list[Call | None]:
         hottest = max(range(4), key=lambda i: snap.tyre_temp_c[i])
         highest = max(range(4), key=lambda i: snap.tyre_pressure_psi[i])
+        temp_hot, psi_high = self._tyre_limits[snap.wet_tyres]
         checks = (
-            ("tyre_hot", snap.tyre_temp_c[hottest] > self._temp_hot, hottest),
-            ("tyre_pressure_high", snap.tyre_pressure_psi[highest] > self._psi_high, highest),
+            ("tyre_hot", snap.tyre_temp_c[hottest] > temp_hot, hottest),
+            ("tyre_pressure_high", snap.tyre_pressure_psi[highest] > psi_high, highest),
         )
         calls = []
         for kind, over, i in checks:

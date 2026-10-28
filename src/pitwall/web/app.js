@@ -76,9 +76,9 @@
     }
   }
 
-  function tyreLevel(temp, psi) {
-    const [tLo, tHi] = state.cfg.tyre_temp_c;
-    const [pLo, pHi] = state.cfg.tyre_pressure_psi;
+  function tyreLevel(temp, psi, wet) {
+    const [tLo, tHi] = wet ? state.cfg.tyre_temp_c_wet : state.cfg.tyre_temp_c;
+    const [pLo, pHi] = wet ? state.cfg.tyre_pressure_psi_wet : state.cfg.tyre_pressure_psi;
     if (temp > tHi + 5 || psi > pHi + 0.5) return ["crit", "Hot"];
     if (temp > tHi || psi > pHi) return ["warn", "High"];
     if (temp < tLo || psi < pLo) return ["cold", "Cold"];
@@ -291,7 +291,7 @@
     document.querySelectorAll(".tyre").forEach((el) => {
       const i = Number(el.dataset.i);
       const temp = t.tyre_temp_c[i], psi = t.tyre_pressure_psi[i];
-      const [level, word] = tyreLevel(temp, psi);
+      const [level, word] = tyreLevel(temp, psi, t.wet_tyres);
       el.dataset.level = level;
       el.querySelector(".t").textContent = temp.toFixed(0);
       el.querySelector(".p").textContent = psi.toFixed(1);

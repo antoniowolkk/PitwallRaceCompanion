@@ -123,6 +123,8 @@ def test_call_filter_keeps_urgent_calls_only():
         src.snap = Snapshot(laps=2, best_ms=117_000, last_ms=117_000, flag="yellow", **ok)
         now[0] = 20
         await poller.tick()
+        now[0] = 21.5
+        await poller.tick()
 
     asyncio.run(scenario())
     assert [m["kind"] for m in sent if m["type"] == "radio"] == ["flag_yellow"]
