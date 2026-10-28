@@ -163,10 +163,21 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 }
 .banner[hidden] { display: none; }
 
-/* Speed strip */
+/* Live screen: three columns (car, track, times and radio). Below 1000 px wide they stack
+   and the page scrolls; on a desktop the screen fits the window (see the end of this file). */
+.live .cols { display: grid; gap: 12px; }
+.live .col { display: grid; gap: 12px; align-content: start; min-width: 0; }
+
+/* Speed, gear and shift lights in one panel */
+.drive { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; }
+.drive .rpm-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
+.drive .rpm-row .num { font-size: 20px; font-weight: 600; text-align: right; min-width: 5ch; }
+.drive .rpm-row .unit { margin: 0; }
+
+/* Lap, current, flag */
 .strip {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1.6fr 1.2fr;
+  grid-template-columns: 0.7fr 1.6fr 1.2fr;
   gap: 12px;
 }
 .readout { display: flex; flex-direction: column; }
@@ -186,17 +197,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .flag[data-flag="green"] .num { color: var(--good); }
 
 /* RPM shift lights */
-.rpm {
-  --cut: 10px;
-  display: grid;
-  grid-template-columns: auto 1fr 7ch;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 18px;
-}
-.rpm h2 { margin: 0; }
-.rpm h2::after { display: none; }
-.rpm .num { font-size: 22px; text-align: right; }
 .lights { display: grid; grid-template-columns: repeat(20, 1fr); gap: 4px; height: 14px; }
 .lights i {
   background: var(--surface-raised);
@@ -208,7 +208,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .lights i.on.max { background: var(--crit); }
 
 /* Tiles */
-.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.laps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.laps .big { font-size: clamp(30px, 3.2vw, 52px); }
 .tile { padding: 16px 20px 18px; }
 .big { font-size: 64px; font-weight: 600; line-height: 1.05; text-shadow: 0 0 22px rgba(242, 236, 234, .12); }
 .sub { margin: 10px 0 0; color: var(--text-2); font-size: 14px; letter-spacing: .04em; }
@@ -363,16 +364,20 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .btn.ghost:hover { background: var(--border); }
 .coach[hidden], .coach .row[hidden] { display: none; }
 
-/* Track map: turn readout left, outline right; the outline is learned from the first lap. */
-.trackmap { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px; align-items: center; }
-.turns { display: grid; gap: 8px; align-self: start; }
-.turn { display: grid; grid-template-columns: 4.5em 1fr; align-items: baseline; gap: 2px 8px; }
+/* Track map: now and next turn above the outline; the outline is learned from the first lap. */
+.trackmap { display: flex; flex-direction: column; gap: 8px; }
+.trackmap h2::after { order: 1; }
+.trackmap .map-state { order: 2; }
+.turns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.turn { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
 .turn .lbl { color: var(--text-2); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
 .turn b { font-size: 24px; font-weight: 600; }
 .turn.next b { font-size: 18px; color: var(--text-2); }
 .turn .dist { grid-column: 2; color: var(--text-2); font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .turn .dist:empty { display: none; }
 .map { width: 100%; height: 320px; }
+.map-empty { flex: 1; display: grid; place-items: center; margin: 0; min-height: 120px; color: var(--text-2); }
+.map-empty[hidden] { display: none; }
 .map .line { fill: none; stroke: var(--edge); stroke-width: 6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .map .here { fill: none; stroke: var(--maroon-tint); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .map text { fill: var(--text-2); font-family: var(--mono); text-anchor: middle; dominant-baseline: central; }
@@ -381,7 +386,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 
 @media (max-width: 760px) {
   .subtitle p { font-size: 24px; }
-  .trackmap { grid-template-columns: 1fr; }
   .map { height: 220px; }
   .log li:not(.empty) { grid-template-columns: 8ch 1fr; }
   .log .lap { display: none; }
@@ -467,17 +471,13 @@ main[hidden] { display: none; }
 .saved[data-level="bad"] { color: var(--crit); }
 
 /* Disconnected: dim live numbers */
-body[data-acc="waiting"] :is(.strip, .rpm, .tiles),
-body[data-acc="unavailable"] :is(.strip, .rpm, .tiles) { opacity: .45; }
+body[data-acc="waiting"] :is(.drive, .strip, .tile, .laps),
+body[data-acc="unavailable"] :is(.drive, .strip, .tile, .laps) { opacity: .45; }
 
 @media (max-width: 760px) {
   .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .strip .speed { grid-column: span 2; }
-  .tiles { grid-template-columns: 1fr; }
-  .big { font-size: 52px; }
+  .big { font-size: 44px; }
   .status { margin-left: 0; }
-  .rpm { grid-template-columns: 1fr 7ch; }
-  .rpm h2 { display: none; }
   .tyres { grid-template-columns: 1fr 40px 1fr; }
   .car { width: 40px; }
 }
@@ -486,3 +486,48 @@ body[data-acc="unavailable"] :is(.strip, .rpm, .tiles) { opacity: .45; }
   * { transition: none !important; animation: none !important; }
 }
 .choice label em { font-style: normal; }
+
+/* Live screen on a desktop: everything fits the window, nothing scrolls. Numbers scale with
+   the window height so it also fits a 1366 x 768 laptop. */
+@media (min-width: 1000px) and (min-height: 540px) {
+  body[data-screen="live"] { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  body[data-screen="live"] .top { flex: none; padding: 8px 16px; }
+  body[data-screen="live"] main.live {
+    flex: 1; min-height: 0; width: 100%; max-width: 1920px;
+    display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 14px;
+  }
+  .live .banner { flex: none; padding: 8px 14px; }
+  .live .cols {
+    flex: 1; min-height: 0; gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+  .live .col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .live .hud { padding: clamp(8px, 1.3vh, 14px) clamp(12px, 1.1vw, 18px); }
+  .live .hud h2 { margin-bottom: clamp(2px, .5vh, 6px); font-size: 13px; }
+
+  .live .drive .num, .live .gear .num { font-size: clamp(36px, 7vh, 64px); }
+  .live .readout .num.small { font-size: clamp(18px, 3.2vh, 28px); }
+  .live .big { font-size: clamp(28px, 5.6vh, 56px); }
+  .live .tile { padding: clamp(8px, 1.3vh, 14px) clamp(12px, 1.1vw, 18px); }
+  .live .meter { margin-top: clamp(4px, 1vh, 12px); }
+  .live .sub { margin-top: clamp(4px, .8vh, 10px); }
+  .live #tile-tyres { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .live .tyres { flex: 1; min-height: 0; gap: clamp(4px, .9vh, 10px); }
+  .live .tyre { padding: clamp(4px, .8vh, 8px) 10px; }
+  .live .tyre .t { font-size: clamp(20px, 3.6vh, 34px); }
+  .live .car { max-height: 100%; }
+
+  .live .trackmap { flex: 1; min-height: 0; }
+  .live .map { flex: 1; min-height: 0; height: auto; }
+  .live .turn b { font-size: clamp(16px, 2.6vh, 24px); }
+  .live .turn.next b { font-size: clamp(14px, 2.1vh, 18px); }
+  .live .subtitle { flex: none; min-height: clamp(56px, 9vh, 84px); padding: clamp(8px, 1.4vh, 16px) 18px; }
+  .live .subtitle p { font-size: clamp(18px, 3.2vh, 30px); }
+  body[data-subtitle-size="large"] .live .subtitle p:not(.quiet) { font-size: clamp(24px, 4.6vh, 44px); }
+
+  .live .laps { flex: none; }
+  .live .coach { flex: none; max-height: 45%; overflow: hidden; }
+  .live .log { flex: 1; min-height: 0; overflow: hidden; }
+  .live .log li:not(.empty) { grid-template-columns: auto auto 1fr; gap: 2px 10px; padding: 6px 0; font-size: 15px; }
+  .live .log .text { grid-column: 1 / -1; }
+}

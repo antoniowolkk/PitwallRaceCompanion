@@ -120,6 +120,8 @@
     $("map-turn").setAttribute("d", "");
     $("map-car").setAttribute("r", 0);
     mapTurn = undefined;
+    $("map-empty").hidden = Boolean(track && track.points);
+    map.style.display = track && track.points ? "" : "none";
     if (!track || !track.points) {
       $("map-state").textContent = track ? "○ Learning the track: drive one full lap" : "○ No track yet";
       return;
@@ -524,6 +526,7 @@
   function route() {
     const screen = SCREENS[location.hash.slice(1)] ? location.hash.slice(1) : "live";
     for (const [name, id] of Object.entries(SCREENS)) $(id).hidden = name !== screen;
+    document.body.dataset.screen = screen; // the Live screen fits the window; the others scroll
     if (screen === "coach") loadSessions();
     document.querySelectorAll(".tabs a.tab").forEach((a) => {
       const on = a.getAttribute("href") === `#${screen}`;
