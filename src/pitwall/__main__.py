@@ -42,6 +42,7 @@ def _serve(args: argparse.Namespace) -> None:
         prefs=prefs,
         prefs_path=prefs_path,
         variants=variants,
+        tracks_dir=data_dir() / "tracks",
     )
     if args.source:
         settings.source = args.source

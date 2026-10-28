@@ -318,8 +318,26 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .log li[data-priority="1"] .prio { color: var(--crit); }
 .log li[data-priority="2"] .prio { color: var(--maroon-tint); }
 
+/* Track map: turn readout left, outline right; the outline is learned from the first lap. */
+.trackmap { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px; align-items: center; }
+.turns { display: grid; gap: 8px; align-self: start; }
+.turn { display: grid; grid-template-columns: 4.5em 1fr; align-items: baseline; gap: 2px 8px; }
+.turn .lbl { color: var(--text-2); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
+.turn b { font-size: 24px; font-weight: 600; }
+.turn.next b { font-size: 18px; color: var(--text-2); }
+.turn .dist { grid-column: 2; color: var(--text-2); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.turn .dist:empty { display: none; }
+.map { width: 100%; height: 320px; }
+.map .line { fill: none; stroke: var(--edge); stroke-width: 6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.map .here { fill: none; stroke: var(--maroon-tint); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.map text { fill: var(--text-2); font-family: var(--mono); text-anchor: middle; dominant-baseline: central; }
+.map text.on { fill: var(--text); font-weight: 700; }
+.map .car-dot { fill: var(--text); stroke: var(--maroon); stroke-width: 3; vector-effect: non-scaling-stroke; }
+
 @media (max-width: 760px) {
   .subtitle p { font-size: 24px; }
+  .trackmap { grid-template-columns: 1fr; }
+  .map { height: 220px; }
   .log li:not(.empty) { grid-template-columns: 8ch 1fr; }
   .log .lap { display: none; }
   .log .text { grid-column: 1 / -1; }

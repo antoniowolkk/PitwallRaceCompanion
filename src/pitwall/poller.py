@@ -12,6 +12,7 @@ from typing import Any
 from .events import EventEngine, Radio
 from .models import diff
 from .telemetry import TelemetrySource
+from .track import TrackMap
 from .voice import Voice
 
 log = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class Poller:
         engine: EventEngine | None = None,
         radio: Radio | None = None,
         voice: Voice | None = None,
+        track_map: TrackMap | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.source = source
@@ -40,6 +42,7 @@ class Poller:
         self._voice = voice
         self._voice_status = self._voice.status if self._voice else "off"
         self._clock = clock
+        self.track_map = track_map
         self.connected = False
         self.last: dict[str, Any] | None = None
         self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
@@ -92,6 +95,10 @@ class Poller:
         self.last = wire
         if changes:
             await self._broadcast({"type": "telemetry", "data": changes})
+        if self.track_map:
+            track = self.track_map.update(snap)
+            if track:
+                await self._broadcast(track)
 
         if self._engine:
             now = self._clock()

@@ -102,4 +102,5 @@ class Settings:
     prefs: Prefs = field(default_factory=Prefs)
     prefs_path: Path | None = None  # where the Settings screen saves; None keeps changes in memory
     variants: dict[str, list[str]] = field(default_factory=dict)  # AI-written lines (wording.py)
+    tracks_dir: Path | None = None  # learned track outlines; None keeps them in memory
     thresholds: dict[str, Any] = field(default_factory=load_thresholds)

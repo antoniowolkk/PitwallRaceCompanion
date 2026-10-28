@@ -28,3 +28,11 @@ fuel_cooldown_s = 30.0
 # Radio queue: gap between calls (urgent calls skip it); queued calls older than this are dropped.
 spacing_s = 4.0
 expire_s = 15.0
+
+[track]
+# Tracks without official turns in tracks.toml: a turn is a speed dip of at least this much,
+# the slowest point within this share of the lap either side,
+turn_drop_kmh = 25.0
+turn_window = 0.03
+# and the turn spans this many metres either side of that point.
+turn_half_m = 60.0

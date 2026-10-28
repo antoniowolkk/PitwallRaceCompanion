@@ -1,0 +1,78 @@
+# Official turns per ACC track, keyed by ACC's static track name.
+# start and end are lap fractions (ACC normalized_car_position, 0 at the line) where the
+# car is turning. They are the same for every car on that track.
+# Tracks not listed get turns found from the first lap (speed dips), numbered in order.
+
+# Numbers and names: formula1.com, "How every corner at Spa-Francorchamps got its name".
+# Positions: recordings/spa_map.jsonl, Porsche 992 GT3 R, lap 2 (2:22.6), 2026-10-28.
+[[Spa]]
+number = "1"
+name = "La Source"
+start = 0.040
+end = 0.064
+
+[[Spa]]
+number = "2-4"
+name = "Eau Rouge"
+start = 0.136
+end = 0.188
+
+[[Spa]]
+number = "5-6"
+name = "Les Combes"
+start = 0.330
+end = 0.364
+
+[[Spa]]
+number = "7"
+name = "Malmedy"
+start = 0.365
+end = 0.389
+
+[[Spa]]
+number = "8"
+name = "Bruxelles"
+start = 0.415
+end = 0.453
+
+[[Spa]]
+number = "9"
+name = "Jacky Ickx"
+start = 0.455
+end = 0.483
+
+[[Spa]]
+number = "10-11"
+name = "Pouhon"
+start = 0.530
+end = 0.595
+
+[[Spa]]
+number = "12-13"
+name = "Fagnes"
+start = 0.627
+end = 0.681
+
+[[Spa]]
+number = "14"
+name = "Campus"
+start = 0.690
+end = 0.718
+
+[[Spa]]
+number = "15"
+name = "Paul Frere"
+start = 0.719
+end = 0.758
+
+[[Spa]]
+number = "16-17"
+name = "Blanchimont"
+start = 0.832
+end = 0.898
+
+[[Spa]]
+number = "18-19"
+name = "Bus Stop"
+start = 0.950
+end = 0.982

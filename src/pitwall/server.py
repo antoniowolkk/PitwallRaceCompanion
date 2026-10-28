@@ -15,6 +15,7 @@ from .config import CALL_PRIORITY, CHOICES, Prefs, Settings
 from .events import EventEngine, Radio, load_calls, words
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
+from .track import TrackMap
 from .voice import VOICES, Voice, model_files
 from . import wording
 
@@ -108,6 +109,7 @@ def create_app(
         engine=EventEngine(settings.thresholds, variants=None if settings.prefs.lite else variants),
         radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
         voice=voice,
+        track_map=TrackMap(settings.thresholds, root=settings.tracks_dir),
     )
     poller.max_priority = CALL_PRIORITY[settings.prefs.calls]
 
@@ -189,6 +191,8 @@ def create_app(
         await websocket.send_json(poller.status())
         if poller.last is not None:
             await websocket.send_json({"type": "telemetry", "data": poller.last})
+        if poller.track_map and poller.track_map.track:
+            await websocket.send_json(poller.track_map.message())
         await websocket.send_json({"type": "radio_log", "calls": list(poller.radio_log)})
         await websocket.send_json(settings_message(settings.prefs, variants))
         hub.clients.add(websocket)

@@ -85,6 +85,85 @@
     return ["good", "OK"];
   }
 
+  // Track map: outline and turns come in a "track" message; the car dot and the
+  // current / next turn follow lap_pos and x, y from telemetry.
+  const SVG = "http://www.w3.org/2000/svg";
+  let track = null; // { track, points, turns, length_m, official }
+  let mapTurn; // turn highlighted on the map, so it is redrawn only on change
+
+  const turnName = (t) => (t ? `T${t.number}${t.name ? ` ${t.name}` : ""}` : "—");
+  const inside = (t, pos) => (t.start <= t.end ? pos >= t.start && pos <= t.end : pos >= t.start || pos <= t.end);
+  const pointAt = (pos) => track.points[Math.floor(((pos % 1) + 1) % 1 * track.points.length) % track.points.length];
+
+  function turnAt(pos) {
+    const current = track.turns.find((t) => inside(t, pos)) || null;
+    let next = null, gap = 2;
+    for (const t of track.turns) {
+      const ahead = (t.start - pos + 1) % 1;
+      if (t !== current && ahead < gap) [next, gap] = [t, ahead];
+    }
+    return [current, next, gap];
+  }
+
+  function turnPath(t) {
+    const n = track.points.length, from = Math.floor(t.start * n), span = (Math.floor(t.end * n) - from + n) % n;
+    const pts = [];
+    for (let i = 0; i <= span; i++) pts.push(track.points[(from + i) % n].join(","));
+    return `M${pts.join("L")}`;
+  }
+
+  function drawTrack() {
+    $("track-name").textContent = track ? track.track.replaceAll("_", " ") : "";
+    const map = $("map"), labels = $("map-labels");
+    labels.replaceChildren();
+    $("map-line").setAttribute("d", "");
+    $("map-turn").setAttribute("d", "");
+    $("map-car").setAttribute("r", 0);
+    mapTurn = undefined;
+    if (!track || !track.points) {
+      $("map-state").textContent = track ? "○ Learning the track: drive one full lap" : "○ No track yet";
+      return;
+    }
+    const pts = track.points, xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const size = Math.max(maxX - minX, maxY - minY), pad = size * 0.07;
+    map.setAttribute("viewBox", `${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}`);
+    $("map-line").setAttribute("d", `M${pts.map((p) => p.join(",")).join("L")}Z`);
+    $("map-car").dataset.r = size * 0.022;
+    // Turn numbers sit just outside the line, pushed away from the middle of the map.
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, font = size * 0.05;
+    for (const t of track.turns) {
+      const [x, y] = pointAt(t.start + ((t.end - t.start + 1) % 1) / 2);
+      const d = Math.hypot(x - cx, y - cy) || 1;
+      const text = document.createElementNS(SVG, "text");
+      text.setAttribute("x", x + ((x - cx) / d) * font * 1.3);
+      text.setAttribute("y", y + ((y - cy) / d) * font * 1.3);
+      text.setAttribute("font-size", font);
+      text.textContent = t.number;
+      text.turn = t;
+      labels.append(text);
+    }
+    $("map-state").textContent = track.official ? "● Official turn numbers" : "▲ Turns numbered from your lap";
+  }
+
+  function renderTrack(t) {
+    if (!track || t.lap_pos === undefined) return;
+    const [current, next, gap] = turnAt(t.lap_pos);
+    $("turn-now").textContent = t.in_pit_lane ? "Pit lane" : current ? turnName(current) : "Straight";
+    $("turn-next").textContent = turnName(next);
+    $("turn-dist").textContent = next && track.length_m && !t.in_pit_lane ? `in ${Math.round(gap * track.length_m)} m` : "";
+    if (!track.points) return;
+    const car = $("map-car");
+    car.setAttribute("cx", t.x);
+    car.setAttribute("cy", t.y);
+    car.setAttribute("r", car.dataset.r);
+    if (current !== mapTurn) {
+      mapTurn = current;
+      $("map-turn").setAttribute("d", current ? turnPath(current) : "");
+      for (const text of $("map-labels").children) text.classList.toggle("on", text.turn === current);
+    }
+  }
+
   // Back to the "no data" look, so old numbers never sit under a Waiting banner.
   function clear() {
     for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
@@ -105,6 +184,9 @@
     });
     $("last-delta").textContent = " ";
     $("car-track").textContent = " ";
+    for (const id of ["turn-now", "turn-next"]) $(id).textContent = "—";
+    $("turn-dist").textContent = "";
+    $("map-car").setAttribute("r", 0);
   }
 
   function render() {
@@ -174,6 +256,7 @@
       d.textContent = " ";
     }
     $("car-track").textContent = [t.car, t.track].filter(Boolean).join(" · ").replaceAll("_", " ");
+    renderTrack(t);
   }
 
   // Radio: subtitle shows the latest call ~4 s, the log keeps the last 20, newest first.
@@ -248,6 +331,10 @@
       case "settings":
         applySettings(msg);
         return;
+      case "track":
+        track = msg;
+        drawTrack();
+        break;
     }
     schedule();
   }

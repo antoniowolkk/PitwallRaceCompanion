@@ -114,8 +114,16 @@ class MockSource:
         if self.fuel_l < FUEL_PER_LAP:
             self.fuel_l = 60.0  # pretend pit stop so the replay never runs dry
 
+    def _xy(self, frac: float) -> tuple[float, float]:
+        # A lumpy loop for the map: three bulges, clockwise, about the lap length round.
+        a = 2 * math.pi * frac
+        r = 700 * (1 + 0.18 * math.sin(3 * a))
+        return r * math.cos(a), r * math.sin(a)
+
     def snapshot(self) -> Snapshot:
         kmh = self._v() * 3.6
+        frac = (self.pos_m / LAP_M) % 1
+        x, y = self._xy(frac)
         gear = bisect.bisect_right(GEARS_KMH, kmh)
         lo, hi = GEARS_KMH[gear - 1], min(GEARS_KMH[gear], 280)
         rpm = 4200 + (kmh - lo) / max(hi - lo, 1) * 4300
@@ -143,6 +151,9 @@ class MockSource:
             lap_valid=self.lap_valid,
             flag=self.flag,
             in_pit_lane=False,
+            lap_pos=frac,
+            x=x,
+            y=y,
         )
 
     def read(self) -> Snapshot | None:
