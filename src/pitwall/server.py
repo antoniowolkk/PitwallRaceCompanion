@@ -56,7 +56,15 @@ def warm_lines(settings: Settings) -> list[str]:
     lines = sorted(calls.values(), key=lambda line: line["priority"])
     warm = [line["text"] for line in lines if "{" not in line["text"]]
     laps = range(1, int(settings.thresholds["fuel"]["warn_laps"]) + 1)
-    return [*warm, *(calls["fuel_warn"]["text"].format(laps=words(n)) for n in laps), RADIO_CHECK]
+    closing = calls["pit_window_closing"]["text"]
+    warn_min = max(1, round(settings.thresholds["pit"]["closing_warn_s"] / 60))
+    minutes = ["a minute", *(f"{words(m)} minutes" for m in range(2, warn_min + 1))]
+    return [
+        *warm,
+        *(closing.format(minutes=m) for m in minutes),
+        *(calls["fuel_warn"]["text"].format(laps=words(n)) for n in laps),
+        RADIO_CHECK,
+    ]
 
 
 def settings_message(prefs: Prefs) -> dict[str, Any]:

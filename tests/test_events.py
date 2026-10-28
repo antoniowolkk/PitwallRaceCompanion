@@ -22,7 +22,7 @@ def kinds(calls: list[Call]) -> list[str]:
 
 
 def test_every_call_line_formats():
-    fields = dict(laps="three", tyre="front left", temp="ninety seven", psi="twenty seven point nine", time="one fifty one point zero")
+    fields = dict(laps="three", tyre="front left", temp="ninety seven", psi="twenty seven point nine", time="one fifty one point zero", minutes="two minutes")
     for kind, line in load_calls().items():
         assert line["priority"] in (1, 2, 3), kind
         text = line["text"].format(**fields)
@@ -151,3 +151,42 @@ def test_numbers_are_spoken_like_an_engineer():
     assert spoken_lap(110_260) == "one fifty point two"
     assert spoken_lap(125_311) == "two oh five point three"
     assert spoken_lap(142_005) == "two twenty two point zero"
+
+
+def race(left_s, missing=1, done=False, start=600_000, end=1_200_000):
+    # 30-minute race, window minutes 10-20 (centred, like ACC).
+    return snap(session="race", session_time_left=left_s * 1000.0, pit_window_start=start, pit_window_end=end,
+                missing_mandatory_pits=missing, mandatory_pit_done=done)
+
+
+def test_pit_window_open_closing_and_done():
+    e = engine()
+    assert kinds(e.update(race(1500), 0)) == []  # minute 5
+    assert kinds(e.update(race(1150), 1)) == ["pit_window_open"]  # minute 10:50
+    assert kinds(e.update(race(1100), 2)) == []  # said once
+    calls = e.update(race(700), 3)  # 100 s before it closes
+    assert [c.text for c in calls] == ["Window closes in about two minutes, we still need to stop. Box soon."]
+    assert kinds(e.update(race(690), 4)) == []
+    assert kinds(e.update(race(650, missing=0, done=True), 5)) == ["pit_stop_done"]
+    assert kinds(e.update(race(500, missing=0, done=True), 6)) == []  # past the window, stop covered
+
+
+def test_pit_window_missed_once():
+    e = engine()
+    e.update(race(1000), 0)
+    assert kinds(e.update(race(590), 1)) == ["pit_window_missed"]
+    assert kinds(e.update(race(100), 2)) == []
+
+
+def test_no_pit_calls_without_a_window_or_outside_races():
+    e = engine()
+    # The 2026-10-28 five-minute race: ACC sent start 150500 > end 149500 and no stop needed.
+    for t, left in enumerate((300, 150, 10)):
+        assert kinds(e.update(race(left, missing=0, done=True, start=150_500, end=149_500), t)) == []
+    e = engine()
+    assert kinds(e.update(snap(session="practice", session_time_left=900_000.0, pit_window_start=600_000,
+                               pit_window_end=1_200_000, missing_mandatory_pits=1), 0)) == []
+
+
+def test_two_oh_oh():
+    assert spoken_lap(120_500) == "two oh oh point five"

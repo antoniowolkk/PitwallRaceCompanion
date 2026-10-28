@@ -20,6 +20,22 @@ text = "The {tyre}'s running hot, {temp} degrees. Go easy on it."
 priority = 2
 text = "Pressures are a bit high. The {tyre}'s at {psi}."
 
+[pit_window_open]
+priority = 2
+text = "Pit window's open. Box when you're ready."
+
+[pit_window_closing]
+priority = 1
+text = "Window closes in about {minutes}, we still need to stop. Box soon."
+
+[pit_window_missed]
+priority = 1
+text = "We missed the pit window. Expect a penalty."
+
+[pit_stop_done]
+priority = 3
+text = "Stop's done, nice work. Window's covered."
+
 [best_lap]
 priority = 3
 text = "Nice one, personal best, {time}."
