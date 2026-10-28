@@ -12,7 +12,7 @@
     <div class="brand"><span class="mark" aria-hidden="true"></span>Pit Wall</div>
     <nav class="tabs" aria-label="Screens">
       <a class="tab active" aria-current="page" href="#live"><span>Live</span></a>
-      <span class="tab" aria-disabled="true" title="Phase 4"><span>Coach</span></span>
+      <a class="tab" href="#coach"><span>Coach</span></a>
       <span class="tab" aria-disabled="true" title="Phase 5"><span>Setup</span></span>
       <a class="tab" href="#settings"><span>Settings</span></a>
     </nav>
@@ -24,93 +24,132 @@
     </ul>
   </header>
 
-  <main id="live">
+  <main id="live" class="live">
     <p id="banner" class="banner" role="status">Waiting for ACC. Start a session from Steam; Pit Wall connects once you are on track.</p>
 
-    <section class="hud coach" id="coach" aria-live="polite" aria-label="Personal turn tips" hidden>
-      <h2>Personal turn tips</h2>
-      <p class="coach-text" id="coach-text"></p>
-      <ul class="coach-turns" id="coach-turns"></ul>
-      <p class="coach-note" id="coach-note"></p>
-      <div class="row" id="coach-actions">
-        <button type="button" class="btn" id="coach-yes">✎ Write tips</button>
-        <button type="button" class="btn ghost" id="coach-no">Not now</button>
+    <div class="cols">
+      <div class="col col-car">
+        <section class="hud drive" aria-label="Car">
+          <div class="readout speed"><h2>Speed</h2><div><span class="num" id="speed">—</span><span class="unit">km/h</span></div></div>
+          <div class="readout gear"><h2>Gear</h2><span class="num" id="gear">—</span></div>
+          <div class="rpm-row" aria-label="Engine speed">
+            <div class="lights" id="rpm-lights" aria-hidden="true"></div>
+            <span class="num" id="rpm">—</span><span class="unit">rpm</span>
+          </div>
+        </section>
+
+        <section class="strip" aria-label="Lap">
+          <div class="hud readout"><h2>Lap</h2><span class="num small" id="lap">—</span></div>
+          <div class="hud readout"><h2 id="current-lbl">Current</h2><span class="num small" id="current">—</span></div>
+          <div class="hud readout flag" id="flag" data-flag="none"><h2>Flag</h2><span class="num small" id="flag-txt">—</span></div>
+        </section>
+
+        <article class="hud tile" id="tile-fuel" data-level="idle">
+          <h2>Fuel</h2>
+          <div class="big"><span id="fuel">—</span><span class="unit">L</span></div>
+          <div class="meter" aria-hidden="true"><div id="fuel-bar"></div></div>
+          <p class="sub"><span class="state" id="fuel-state"></span> <b id="fuel-laps">—</b> laps · <b id="fuel-per-lap">—</b> L/lap</p>
+        </article>
+
+        <article class="hud tile" id="tile-tyres">
+          <h2>Tyres <span class="hint">°C · psi</span></h2>
+          <div class="tyres">
+            <div class="tyre left" data-i="0" data-level="idle"><span class="pos">FL</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
+            <svg class="car" viewBox="0 0 60 120" aria-hidden="true">
+              <path d="M18 6 Q30 0 42 6 L46 30 L47 92 Q46 112 30 116 Q14 112 13 92 L14 30 Z" />
+              <path d="M20 40 L40 40 L42 62 L18 62 Z" class="cabin" />
+              <line x1="6" y1="28" x2="54" y2="28" /><line x1="6" y1="92" x2="54" y2="92" />
+            </svg>
+            <div class="tyre right" data-i="1" data-level="idle"><span class="pos">FR</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
+            <div class="tyre left" data-i="2" data-level="idle"><span class="pos">RL</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
+            <div class="tyre right" data-i="3" data-level="idle"><span class="pos">RR</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
+          </div>
+        </article>
       </div>
-    </section>
 
-    <section class="strip" aria-label="Car">
-      <div class="hud readout speed"><h2>Speed</h2><div><span class="num" id="speed">—</span><span class="unit">km/h</span></div></div>
-      <div class="hud readout gear"><h2>Gear</h2><span class="num" id="gear">—</span></div>
-      <div class="hud readout"><h2>Lap</h2><span class="num small" id="lap">—</span></div>
-      <div class="hud readout"><h2 id="current-lbl">Current</h2><span class="num small" id="current">—</span></div>
-      <div class="hud readout flag" id="flag" data-flag="none"><h2>Flag</h2><span class="num small" id="flag-txt">—</span></div>
-    </section>
-
-    <section class="hud rpm" aria-label="Engine speed">
-      <h2>RPM</h2>
-      <div class="lights" id="rpm-lights" aria-hidden="true"></div>
-      <span class="num" id="rpm">—</span>
-    </section>
-
-    <section class="tiles">
-      <article class="hud tile" id="tile-fuel" data-level="idle">
-        <h2>Fuel</h2>
-        <div class="big"><span id="fuel">—</span><span class="unit">L</span></div>
-        <div class="meter" aria-hidden="true"><div id="fuel-bar"></div></div>
-        <p class="sub"><span class="state" id="fuel-state"></span> <b id="fuel-laps">—</b> laps · <b id="fuel-per-lap">—</b> L/lap</p>
-      </article>
-
-      <article class="hud tile" id="tile-tyres">
-        <h2>Tyres <span class="hint">°C · psi</span></h2>
-        <div class="tyres">
-          <div class="tyre left" data-i="0" data-level="idle"><span class="pos">FL</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
-          <svg class="car" viewBox="0 0 60 120" aria-hidden="true">
-            <path d="M18 6 Q30 0 42 6 L46 30 L47 92 Q46 112 30 116 Q14 112 13 92 L14 30 Z" />
-            <path d="M20 40 L40 40 L42 62 L18 62 Z" class="cabin" />
-            <line x1="6" y1="28" x2="54" y2="28" /><line x1="6" y1="92" x2="54" y2="92" />
+      <div class="col col-track">
+        <section class="hud trackmap" aria-label="Track">
+          <h2>Track <span class="hint" id="track-name"></span><span class="hint map-state" id="map-state">○ No track yet</span></h2>
+          <div class="turns">
+            <div class="turn now"><span class="lbl">Now</span><b id="turn-now">—</b></div>
+            <div class="turn next"><span class="lbl">Next</span><b id="turn-next">—</b><span class="dist" id="turn-dist"></span></div>
+          </div>
+          <p class="map-empty" id="map-empty">○ The map draws itself after your first full lap.</p>
+          <svg id="map" class="map" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+            <path id="map-line" class="line" />
+            <path id="map-turn" class="here" />
+            <g id="map-labels"></g>
+            <circle id="map-car" class="car-dot" r="0" />
           </svg>
-          <div class="tyre right" data-i="1" data-level="idle"><span class="pos">FR</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
-          <div class="tyre left" data-i="2" data-level="idle"><span class="pos">RL</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
-          <div class="tyre right" data-i="3" data-level="idle"><span class="pos">RR</span><span class="t">—</span><span class="p">—</span><span class="state"></span></div>
-        </div>
-      </article>
+        </section>
 
-      <article class="hud tile">
-        <h2>Last lap</h2>
-        <div class="big" id="last">—</div>
-        <p class="sub" id="last-delta">&nbsp;</p>
-      </article>
-
-      <article class="hud tile">
-        <h2>Best lap</h2>
-        <div class="big" id="best">—</div>
-        <p class="sub" id="car-track">&nbsp;</p>
-      </article>
-    </section>
-
-    <section class="hud trackmap" aria-label="Track">
-      <div class="turns">
-        <h2>Track <span class="hint" id="track-name"></span></h2>
-        <div class="turn now"><span class="lbl">Now</span><b id="turn-now">—</b></div>
-        <div class="turn next"><span class="lbl">Next</span><b id="turn-next">—</b><span class="dist" id="turn-dist"></span></div>
-        <p class="sub" id="map-state">○ No track yet</p>
+        <section class="hud subtitle" aria-live="polite" aria-label="Radio">
+          <span class="tag">Radio</span>
+          <p id="subtitle" class="quiet">Radio quiet</p>
+        </section>
       </div>
-      <svg id="map" class="map" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
-        <path id="map-line" class="line" />
-        <path id="map-turn" class="here" />
-        <g id="map-labels"></g>
-        <circle id="map-car" class="car-dot" r="0" />
-      </svg>
+
+      <div class="col col-side">
+        <section class="hud laps" aria-label="Lap times">
+          <div><h2>Last lap</h2><div class="big" id="last">—</div><p class="sub" id="last-delta">&nbsp;</p></div>
+          <div><h2>Best lap</h2><div class="big" id="best">—</div><p class="sub" id="car-track">&nbsp;</p></div>
+        </section>
+
+        <section class="hud coach" id="coach" aria-live="polite" aria-label="Personal turn tips" hidden>
+          <h2>Personal turn tips</h2>
+          <p class="coach-text" id="coach-text"></p>
+          <ul class="coach-turns" id="coach-turns"></ul>
+          <p class="coach-note" id="coach-note"></p>
+          <div class="row" id="coach-actions">
+            <button type="button" class="btn" id="coach-yes">✎ Write tips</button>
+            <button type="button" class="btn ghost" id="coach-no">Not now</button>
+          </div>
+        </section>
+
+        <section class="hud log" aria-label="Radio log">
+          <h2>Radio log</h2>
+          <ol id="radio-log"><li class="empty">No calls yet.</li></ol>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <main id="coaching" hidden>
+    <section class="hud" aria-labelledby="co-session">
+      <h2 id="co-session">This session <span class="hint" id="co-where"></span></h2>
+      <div class="co-numbers">
+        <div><span class="lbl">Laps</span><b id="co-laps">—</b><span class="sub" id="co-clean"></span></div>
+        <div><span class="lbl">Best clean</span><b id="co-best">—</b></div>
+        <div><span class="lbl">Spread</span><b id="co-spread">—</b><span class="sub">last 5 clean laps</span></div>
+      </div>
+      <p class="co-text" id="co-style">Drive a few laps: the style summary builds as you go.</p>
+      <ul class="traits" id="co-traits"></ul>
     </section>
 
-    <section class="hud subtitle" aria-live="polite" aria-label="Radio">
-      <span class="tag">Radio</span>
-      <p id="subtitle" class="quiet">Radio quiet</p>
+    <section class="hud" aria-labelledby="co-tips">
+      <h2 id="co-tips">Coach tips</h2>
+      <ol class="co-list" id="co-tip-list"><li class="empty">No tips yet. The coach speaks after 3 clean laps in a stint, at most twice a stint.</li></ol>
     </section>
 
-    <section class="hud log" aria-label="Radio log">
-      <h2>Radio log</h2>
-      <ol id="radio-log"><li class="empty">No calls yet.</li></ol>
+    <section class="hud" aria-labelledby="co-laps-h">
+      <h2 id="co-laps-h">Laps</h2>
+      <div class="scroll"><table class="co-table" id="co-lap-table">
+        <thead><tr><th>Lap</th><th>Time</th><th>Status</th><th>Lockups</th><th>Wheelspin</th><th>Cuts</th><th>Tyres F / R °C</th></tr></thead>
+        <tbody><tr><td colspan="7" class="empty">No laps yet.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="hud" aria-labelledby="co-turns-h">
+      <h2 id="co-turns-h">Turn by turn</h2>
+      <div class="scroll"><table class="co-table" id="co-turn-table">
+        <thead><tr><th>Turn</th><th>Passes</th><th>Best</th><th>Lockups</th><th>Wheelspin</th><th>Cuts</th></tr></thead>
+        <tbody><tr><td colspan="6" class="empty">No turns yet.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="hud" aria-labelledby="co-past-h">
+      <h2 id="co-past-h">Past sessions</h2>
+      <ol class="co-list" id="co-past"><li class="empty">No saved sessions yet.</li></ol>
     </section>
   </main>
 
@@ -147,6 +186,7 @@
           <label><input type="radio" name="calls" value="urgent"><span><b>Urgent only</b> Yellow, black, penalty, fuel critical</span></label>
         </fieldset>
         <label class="toggle"><input type="checkbox" name="tips"><span>Turn tips: a word before a turn that went wrong last lap</span></label>
+        <label class="toggle"><input type="checkbox" name="coach"><span>Coach: a driving tip after a lap, once or twice a stint</span></label>
       </section>
 
       <section class="hud" aria-labelledby="set-wording">

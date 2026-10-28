@@ -89,3 +89,28 @@ text = "Coming up, {turn}. Track limits got you there last lap, keep it tidy."
 [tip_slow]
 priority = 2
 text = "Coming up, {turn}. You dropped {loss} there last lap, compared to your best."
+
+# Stint coach (phase 4): after a lap, on a straight, at most one or two a stint.
+[coach_braking]
+priority = 3
+text = "Fronts are locking under braking in a few places. Brake a touch earlier and ease off as you turn in."
+
+[coach_throttle]
+priority = 3
+text = "Rears are spinning up on the exits. Feed the throttle in a bit more gently."
+
+[coach_steering]
+priority = 3
+text = "Lots of small steering corrections mid-corner. Smoother hands will keep it settled."
+
+[coach_tyres_front]
+priority = 3
+text = "Fronts are running hotter than the rears. Ease the steering in the long corners."
+
+[coach_consistency]
+priority = 3
+text = "Lap times are jumping around a bit. Try to hit the same braking points every lap."
+
+[coach_praise]
+priority = 3
+text = "That's a tidy lap, nice and clean. Keep that going."

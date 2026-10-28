@@ -8,7 +8,9 @@ Product spec: [docs/PRD.md](docs/PRD.md).
 
 Phase 1 done: core service, ACC shared memory reader, mock and replay modes, Live dashboard.
 Phase 2 done: event engine, casual radio calls with subtitles and radio log, the Kokoro engineer voice, a Settings screen and pit window calls.
-Phase 3 in progress: AI-written variants of every radio line, made ahead of time with a local [Ollama](https://ollama.com) model so nothing AI runs during a race; Lite mode keeps the fixed lines.
+Phase 3 done: AI-written variants of every radio line, made ahead of time with a local [Ollama](https://ollama.com) model so nothing AI runs during a race; Lite mode keeps the fixed lines.
+
+Track map, turn tips and personal tips done. Phase 4 in progress: the Coach screen (laps, turn by turn, driving style summary, past sessions) and a stint coach that gives a plain tip after a lap, once or twice a stint.
 
 ## Run
 

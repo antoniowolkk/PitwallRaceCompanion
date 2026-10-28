@@ -65,6 +65,9 @@ lock_slip = 3.0
 spin_slip = 3.0
 spin_throttle = 0.5
 slip_samples = 2
+# A steering reversal inside a turn counts when the wheel moves back by this much
+# (ACC steer is -1..1). A clean corner has about one: turn in, then unwind.
+steer_swing = 0.04
 # A clean pass this much slower than the best one through that turn is worth a word.
 loss_s = 0.5
 # In practice and qualifying: at most this many tips a lap.
@@ -89,3 +92,36 @@ min_repeats = 2
 # Sessions that personal tips learn from (user's choice: qualifying only; race laps are
 # shaped by traffic). Add "practice" or "hotlap" here to learn from those too.
 learn_from = ["qualify"]
+# Session style summary (Coach screen, kept for the setup advisor): a trait is "worth a look"
+# at these levels. Needs summary_passes turn passes first.
+summary_passes = 10
+lockup_rate = 0.1
+wheelspin_rate = 0.05
+steer_extra = 0.7
+coast_avg_s = 0.4
+cuts = 3
+spread_s = 1.0
+front_hot_c = 5.0
+
+[coach]
+# Stint coach (phase 4): tips after a lap, said on the next straight.
+# No tip before this many clean laps in the stint (PRD default 3); at most this many a stint.
+min_clean_laps = 3
+max_per_stint = 2
+# Coach tips in races too? Off: in a race only the per-turn lockup/cut tips speak.
+race = false
+# The rules look at the last window_laps laps of the stint. A rule fires at:
+window_laps = 3
+lockups = 3  # lockups in the window
+wheelspin = 3  # wheelspin turns in the window
+steer_extra = 1.0  # extra steering reversals per turn, against the cleanest pass (dry only)
+front_hot_c = 5.0  # fronts this much hotter than the rears on the last lap (rears run hotter normally)
+spread_laps = 5  # lap time spread over the last 5 clean laps
+spread_s = 1.0
+# Praise a clean lap this close to the best clean lap (not a new best: that has its own call).
+praise_within_s = 0.3
+# Speak only on a straight: at least safe_s seconds (and safe_min_m) before the next turn.
+safe_s = 6.0
+safe_min_m = 200.0
+# A coach line not started within this many seconds (radio busy) is dropped.
+expire_s = 5.0

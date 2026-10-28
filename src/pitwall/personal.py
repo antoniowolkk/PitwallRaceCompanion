@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,7 @@ from .track import track_key
 log = logging.getLogger(__name__)
 
 MAX_WORDS = 16
+TRIES = 3  # asks per turn until every habit has a line that passes the checks
 
 SYSTEM = (
     "You are the race engineer on a GT3 team radio in Assetto Corsa Competizione, coaching your driver "
@@ -35,7 +37,16 @@ Turn: {turn}. Best pass through it: {best}.
 Habits seen in this turn:
 {habits}
 
-For each habit, write one radio tip the engineer says just before the driver reaches this turn.
+For each habit, write three different radio tips the engineer could say just before the driver reaches this turn.
+What can help, per habit (say it in your own words, fitted to the facts above):
+- lockup: brake a little earlier or a little softer, release the brake smoothly as you turn in, or one click more ABS, or brake bias one click rearward.
+- wheelspin: squeeze the throttle on more gently and later, straighten the wheel first, or one click more TC.
+- off: give up a little entry speed to stay inside the track limits.
+- early_brake: brake a little later, the best pass braked later.
+- low_min_speed: carry more speed through the middle, release the brake earlier.
+- coasting: go straight from brake to throttle, no gap with neither pedal.
+- late_throttle: back on full power sooner on the way out.
+Mention a car setting only when it fits, using the settings above.
 Rules:
 - One or two short sentences, at most {max_words} words, casual and friendly, like a mate on the radio.
 - Tell the driver what to do differently, based only on the habit and the best pass. Do not invent anything.
@@ -45,6 +56,9 @@ Rules:
 - Do not say he, she, him or her.
 - Start with a capital letter and end with a full stop or exclamation mark.
 Return JSON: {{"tips": [{{"habit": "<habit name>", "line": "..."}}]}}"""
+
+# Seen from qwen3:4b at Monza (2026-10-28): "Lock the front wheel on the inside, shift to 4th
+# gear" (advice that makes no sense) and naming the turn although the engineer says it first.
 
 
 def tips_path(root: Path, track: str) -> Path:
@@ -100,10 +114,28 @@ def ask_turn(session: dict[str, Any], turn: dict[str, Any], model: str, post: wo
     lines = {}
     for tip in reply if isinstance(reply, list) else []:
         habit, line = (tip.get("habit"), tip.get("line")) if isinstance(tip, dict) else (None, None)
-        cleaned = wording.check(line, "") if isinstance(line, str) else None
-        if habit in wanted and habit not in lines and cleaned and len(cleaned.split()) <= MAX_WORDS:
+        cleaned = check(line, turn["name"]) if isinstance(line, str) else None
+        if habit in wanted and habit not in lines and cleaned:
             lines[habit] = cleaned
     return lines
+
+
+def check(line: str, turn_name: str = "") -> str | None:
+    """wording.check, plus: short enough, and not naming the turn (the engineer says it first).
+    "in Parabolica" becomes "in there"; any other mention of the name rejects the line."""
+    # qwen3:4b often drops the full stop or opens with the habit as a question ("Lockup? Brake...").
+    line = line.strip()
+    if line and line[-1] not in ".!?":
+        line += "."
+    line = re.sub(r"^(lockup|lock up|wheelspin|off|early brake|low min speed|coasting|late throttle)\?\s+", "", line, flags=re.I)
+    if turn_name:
+        line = re.sub(rf"\b(in|into|at|through|out of)\s+(the\s+)?{re.escape(turn_name)}\b", r"\1 there", line, flags=re.I)
+    cleaned = wording.check(line, "")
+    if not cleaned or len(cleaned.split()) > MAX_WORDS:
+        return None
+    if turn_name and turn_name.lower() in cleaned.lower():
+        return None
+    return cleaned
 
 
 def generate(
@@ -112,12 +144,14 @@ def generate(
     post: wording.Post = wording.http_post,
     report: Callable[[str], None] = print,
 ) -> dict[str, dict[str, str]]:
-    """turn number -> habit -> line, for every turn with patterns (one retry for missing habits)."""
+    """turn number -> habit -> line, for every turn with patterns (asks again for missing habits)."""
     out: dict[str, dict[str, str]] = {}
     for turn in session["patterns"]:
-        lines = ask_turn(session, turn, model, post)
-        missing = [p for p in turn["patterns"] if p["pattern"] not in lines]
-        if missing:
+        lines: dict[str, str] = {}
+        for _ in range(TRIES):
+            missing = [p for p in turn["patterns"] if p["pattern"] not in lines]
+            if not missing:
+                break
             lines.update({k: v for k, v in ask_turn(session, {**turn, "patterns": missing}, model, post).items() if k not in lines})
         if lines:
             out[turn["turn"]] = lines
@@ -151,7 +185,7 @@ def load(root: Path | None, track: str) -> dict[str, dict[str, dict[str, str]]]:
     except (OSError, ValueError, KeyError, TypeError):
         return {}
     return {
-        cond: {turn: {h: line for h, line in habits.items() if isinstance(line, str) and wording.check(line, "")}
+        cond: {turn: {h: line for h, line in habits.items() if isinstance(line, str) and check(line)}
                for turn, habits in turns.items()}
         for cond, turns in data.items()
     }

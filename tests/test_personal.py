@@ -154,3 +154,14 @@ def test_dismiss_stops_the_offer(tmp_path):
     with TestClient(app) as client:
         assert client.post("/api/coach/dismiss", json={"session": data["id"]}).json()["offer"] is None
     assert style.latest_offer(tmp_path) is None
+
+
+def test_lines_naming_the_turn_or_too_long_are_rejected():
+    assert personal.check("Parabolica again, brake earlier.", "Parabolica") is None
+    assert personal.check("Locking fronts in Parabolica. Brake earlier.", "Parabolica") == "Locking fronts in there. Brake earlier."
+    assert personal.check("Brake a touch earlier and squeeze the pedal.", "Parabolica")
+    assert personal.check("Brake " + "really " * 16 + "early.") is None
+
+
+def test_model_habits_are_tidied_not_thrown_away():
+    assert personal.check("Lockup? Brake slightly softer and release smoothly") == "Brake slightly softer and release smoothly."

@@ -14,6 +14,7 @@ from typing import Any
 
 from .models import Snapshot
 from . import personal
+from .coach import StintCoach
 from .style import condition
 from .tips import Mistake, TurnCoach
 from .track import TrackMap, Turn
@@ -119,7 +120,10 @@ class EventEngine:
         self._flag_cooldown = c["flag_cooldown_s"]
         self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
         self.coach = TurnCoach(thresholds, track_map) if track_map else None
+        self.stint = StintCoach(thresholds, self.coach, track_map) if self.coach and track_map else None
         self.tips = True  # Settings: per-turn tips on or off
+        self.coach_on = True  # Settings: stint coach on or off
+        self._coach_expire = thresholds["coach"]["expire_s"]
         self._tip_expire = thresholds["tips"]["expire_s"]
         self.prepare: list[str] = []  # tip lines to render now, so they play at once later
         self._personal_root = personal_root
@@ -136,9 +140,12 @@ class EventEngine:
         self._last_flag = "none"  # last flag called
         self._flag_seen, self._flag_since, self._flag_done = "none", 0.0, True
         self._green_for: tuple[str, str] | None = None  # session the start green was called in
+        self._chequered: tuple[str, str] | None = None  # session whose chequered flag is out
         if self.coach:
             self.coach.finish()
             self.coach.reset()
+        if getattr(self, "stint", None):
+            self.stint.reset()
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
         line = self._lines[kind]
@@ -169,7 +176,8 @@ class EventEngine:
             *self._tyres(snap, now),
             *self._best_lap(prev, snap, now),
             *self._pit_window(prev, snap, now),
-            *self._tips(snap, now),
+            *self._coaching(self._tips(snap, now), snap),
+            *self._coaching(self._stint_calls(snap, now), snap),
         ]
         return [c for c in calls if c is not None]
 
@@ -280,6 +288,29 @@ class EventEngine:
         if not self.tips:
             return []
         return [self._tip_call(m, now, snap) for m in due]
+
+    def _coaching(self, calls: list[Call | None], snap: Snapshot) -> list[Call | None]:
+        """No driving tips once the chequered flag is out: the cool-down lap is not for coaching."""
+        if snap.flag == "chequered":
+            self._chequered = (snap.track, snap.session)
+        if self._chequered == (snap.track, snap.session):
+            return []
+        for call in calls:
+            if call and self.stint:
+                self.stint.said(call.kind, call.text, call.lap)  # for the Coach screen
+        return calls
+
+    def _stint_calls(self, snap: Snapshot, now: float) -> list[Call | None]:
+        if not self.stint:
+            return []
+        kinds = self.stint.update(snap)  # always runs, so it keeps count of the stint
+        if not self.coach_on:
+            return []
+        calls = []
+        for kind in kinds:
+            text = self._pick(kind, self._lines[kind]["text"])
+            calls.append(Call(kind, int(self._lines[kind]["priority"]), text, now, snap.laps + 1, expire_s=self._coach_expire))
+        return calls
 
     def reload_personal(self, track: str | None) -> None:
         self._personal_track = track
