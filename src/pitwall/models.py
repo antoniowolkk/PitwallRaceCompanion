@@ -57,6 +57,15 @@ class Snapshot:
     pit_window_end: int = 0
     mandatory_pit_done: bool = False
     missing_mandatory_pits: int = 0
+    # Where the car is and what the driver does, for the track map and per-turn coaching.
+    # Player car only: ACC sends 60 cars' coordinates, we keep our own entry.
+    lap_pos: float = 0.0  # 0..1 around the lap (normalized_car_position)
+    x: float = 0.0  # world metres, ground plane (ACC x and z)
+    y: float = 0.0
+    throttle: float = 0.0
+    brake: float = 0.0
+    steer: float = 0.0
+    wheel_slip: Wheels = (0.0, 0.0, 0.0, 0.0)
 
     def to_wire(self) -> dict[str, Any]:
         """Rounded values, so the diff only sends changes a driver can see."""
@@ -88,12 +97,19 @@ class Snapshot:
             "pit_window_end": self.pit_window_end,
             "mandatory_pit_done": self.mandatory_pit_done,
             "missing_mandatory_pits": self.missing_mandatory_pits,
+            "lap_pos": round(self.lap_pos, 4),
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
+            "throttle": round(self.throttle, 2),
+            "brake": round(self.brake, 2),
+            "steer": round(self.steer, 2),
+            "wheel_slip": [round(s, 2) for s in self.wheel_slip],
         }
 
     @classmethod
     def from_wire(cls, data: dict[str, Any]) -> Snapshot:
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        for key in ("tyre_temp_c", "tyre_pressure_psi"):
+        for key in ("tyre_temp_c", "tyre_pressure_psi", "wheel_slip"):
             if key in known:
                 known[key] = tuple(known[key])
         return cls(**known)

@@ -50,9 +50,18 @@ def _text(value: str) -> str:
     return value.split("\x00", 1)[0].strip()
 
 
+def _player_xy(graphics: Any) -> tuple[float, float]:
+    """Our car's ground position. car_coordinates holds every car; car_id says whose is whose."""
+    ids = list(graphics.car_id)
+    i = ids.index(graphics.player_car_id) if graphics.player_car_id in ids else 0
+    c = graphics.car_coordinates[i]
+    return float(c.x), float(c.z)  # y is height
+
+
 def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     """Map pyaccsharedmemory Physics/Graphics/Static maps to a Snapshot."""
     fuel_per_lap = float(graphics.fuel_per_lap)
+    x, y = _player_xy(graphics)
     return Snapshot(
         status=_STATUS.get(graphics.status.name, "live"),
         session=_SESSION.get(graphics.session_type.name, "unknown"),
@@ -81,6 +90,13 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         pit_window_end=int(static.pit_window_end),
         mandatory_pit_done=bool(graphics.mandatory_pit_done),
         missing_mandatory_pits=int(graphics.missing_mandatory_pits),
+        lap_pos=float(graphics.normalized_car_position),
+        x=x,
+        y=y,
+        throttle=float(physics.gas),
+        brake=float(physics.brake),
+        steer=float(physics.steer_angle),
+        wheel_slip=_wheels(physics.wheel_slip),
     )
 
 

@@ -79,7 +79,8 @@ def _wheels(fl, fr, rl, rr):
 
 def test_from_acc_maps_library_fields():
     physics = SimpleNamespace(
-        speed_kmh=212.4, gear=4, rpm=7400, fuel=41.2,
+        speed_kmh=212.4, gear=4, rpm=7400, fuel=41.2, gas=0.8, brake=0.0, steer_angle=-0.1,
+        wheel_slip=_wheels(0.1, 0.1, 0.3, 0.2),
         tyre_core_temp=_wheels(84, 82, 79, 80), wheel_pressure=_wheels(26.4, 26.3, 26.1, 26.2),
     )
     graphics = SimpleNamespace(
@@ -88,6 +89,9 @@ def test_from_acc_maps_library_fields():
         current_time=34_000, last_time=104_321, best_time=NO_TIME,
         is_valid_lap=1, is_in_pit_lane=0, is_in_pit=0, session_time_left=1_800_000.0,
         mandatory_pit_done=0, missing_mandatory_pits=1,
+        normalized_car_position=0.25, player_car_id=7, car_id=[3, 7, 9],
+        car_coordinates=[SimpleNamespace(x=1, y=0, z=1), SimpleNamespace(x=-120.5, y=4.0, z=88.25),
+                         SimpleNamespace(x=5, y=0, z=5)],
     )
     # Real ACC pads static strings with NULs.
     static = SimpleNamespace(
@@ -106,6 +110,8 @@ def test_from_acc_maps_library_fields():
     assert snap.best_ms is None
     assert (snap.pit_window_start, snap.pit_window_end, snap.missing_mandatory_pits) == (1_200_000, 2_400_000, 1)
     assert snap.to_wire()["session_time_left"] == 1_800_000
+    assert (snap.lap_pos, snap.x, snap.y) == (0.25, -120.5, 88.25)  # our car, not car 0
+    assert snap.throttle == 0.8 and snap.wheel_slip == (0.1, 0.1, 0.3, 0.2)
 
 
 def test_pause_holds_last_live_values():
