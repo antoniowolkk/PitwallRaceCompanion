@@ -37,6 +37,7 @@ KOKORO_SPEED = 1.05
 PIPER_RATE = 0.9  # Piper length_scale: below 1 is faster
 RADIO_DRIVE = 3.0  # compression strength; 1 is barely any
 MAX_WAIT_S = 15.0  # a non-urgent line that waited longer than this is stale, drop it
+PREPARE = 9  # queue priority of render-only jobs: after every real call
 STYLE = f"k{KOKORO_SPEED}-p{PIPER_RATE}-d{RADIO_DRIVE}"  # in the cache key, so a sound change re-renders
 
 Synth = Callable[[str, Path], None]  # render text to a WAV file
@@ -211,14 +212,23 @@ class Voice:
         self._thread = threading.Thread(target=self._run, args=(list(warm),), name="voice", daemon=True)
         self._thread.start()
 
-    def say(self, text: str, on_start: Callable[[], None] | None = None, priority: int = 2) -> None:
+    def prepare(self, text: str) -> None:
+        """Render a line into the cache when the voice is idle, without playing it."""
+        if self.active:
+            self._queue.put((PREPARE, next(self._order), time.monotonic(), text, None))
+
+    def say(
+        self, text: str, on_start: Callable[[], None] | None = None, priority: int = 2, max_wait: float | None = None
+    ) -> None:
         """Queue a line; on_start runs (in the voice thread) right before it plays.
 
         A call waiting behind a slow render must not hold up an urgent one, so the
         queue is ordered by priority, and non-urgent lines go stale after MAX_WAIT_S.
         """
         if self.active:
-            self._queue.put((priority, next(self._order), time.monotonic(), text, on_start))
+            # A shorter wait goes in as an earlier "queued at", so the stale check stays one line.
+            queued = time.monotonic() - (MAX_WAIT_S - max_wait if max_wait is not None else 0.0)
+            self._queue.put((priority, next(self._order), queued, text, on_start))
         elif on_start:
             on_start()
 
@@ -293,6 +303,12 @@ class Voice:
             priority, _, queued_at, text, on_start = item
             if text is None:
                 return
+            if priority == PREPARE:
+                try:
+                    self._wav(text)
+                except Exception:
+                    log.exception("voice failed to pre-render: %s", text)
+                continue
             if priority > 1 and time.monotonic() - queued_at > MAX_WAIT_S:
                 log.info("voice dropped stale line: %s", text)
                 continue

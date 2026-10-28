@@ -27,6 +27,17 @@
   <main id="live">
     <p id="banner" class="banner" role="status">Waiting for ACC. Start a session from Steam; Pit Wall connects once you are on track.</p>
 
+    <section class="hud coach" id="coach" aria-live="polite" aria-label="Personal turn tips" hidden>
+      <h2>Personal turn tips</h2>
+      <p class="coach-text" id="coach-text"></p>
+      <ul class="coach-turns" id="coach-turns"></ul>
+      <p class="coach-note" id="coach-note"></p>
+      <div class="row" id="coach-actions">
+        <button type="button" class="btn" id="coach-yes">✎ Write tips</button>
+        <button type="button" class="btn ghost" id="coach-no">Not now</button>
+      </div>
+    </section>
+
     <section class="strip" aria-label="Car">
       <div class="hud readout speed"><h2>Speed</h2><div><span class="num" id="speed">—</span><span class="unit">km/h</span></div></div>
       <div class="hud readout gear"><h2>Gear</h2><span class="num" id="gear">—</span></div>
@@ -77,6 +88,21 @@
       </article>
     </section>
 
+    <section class="hud trackmap" aria-label="Track">
+      <div class="turns">
+        <h2>Track <span class="hint" id="track-name"></span></h2>
+        <div class="turn now"><span class="lbl">Now</span><b id="turn-now">—</b></div>
+        <div class="turn next"><span class="lbl">Next</span><b id="turn-next">—</b><span class="dist" id="turn-dist"></span></div>
+        <p class="sub" id="map-state">○ No track yet</p>
+      </div>
+      <svg id="map" class="map" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+        <path id="map-line" class="line" />
+        <path id="map-turn" class="here" />
+        <g id="map-labels"></g>
+        <circle id="map-car" class="car-dot" r="0" />
+      </svg>
+    </section>
+
     <section class="hud subtitle" aria-live="polite" aria-label="Radio">
       <span class="tag">Radio</span>
       <p id="subtitle" class="quiet">Radio quiet</p>
@@ -120,6 +146,7 @@
           <label><input type="radio" name="calls" value="important"><span><b>Important</b> No personal bests</span></label>
           <label><input type="radio" name="calls" value="urgent"><span><b>Urgent only</b> Yellow, black, penalty, fuel critical</span></label>
         </fieldset>
+        <label class="toggle"><input type="checkbox" name="tips"><span>Turn tips: a word before a turn that went wrong last lap</span></label>
       </section>
 
       <section class="hud" aria-labelledby="set-wording">

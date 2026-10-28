@@ -15,8 +15,11 @@ from .config import CALL_PRIORITY, CHOICES, Prefs, Settings
 from .events import EventEngine, Radio, load_calls, words
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
+from .track import TrackMap
 from .voice import VOICES, Voice, model_files
-from . import wording
+from . import personal, style, wording
+from .events import spoken_turn
+from .track import Turn
 
 RADIO_CHECK = "Radio check. Reading you loud and clear."
 
@@ -45,6 +48,8 @@ def client_config(settings: Settings) -> dict[str, Any]:
         "type": "config",
         "tyre_temp_c": t["tyres"]["temp_c"],
         "tyre_pressure_psi": t["tyres"]["pressure_psi"],
+        "tyre_temp_c_wet": t["tyres_wet"]["temp_c"],
+        "tyre_pressure_psi_wet": t["tyres_wet"]["pressure_psi"],
         "fuel_warn_laps": t["fuel"]["warn_laps"],
         "fuel_critical_laps": t["fuel"]["critical_laps"],
     }
@@ -80,6 +85,91 @@ def settings_message(prefs: Prefs, variants: dict[str, list[str]] | None = None)
     return {"type": "settings", **asdict(prefs), "choices": CHOICES, "downloaded": available, "ai_lines": count}
 
 
+class TipsDesk:
+    """Personal turn tips: offer after a session, write them with the local AI only on a yes."""
+
+    def __init__(self, settings: Settings, hub: Hub, poller: Poller, post: wording.Post | None = None):
+        self.root = settings.coach_dir
+        self._style = settings.thresholds["style"]
+        self._hub = hub
+        self._poller = poller
+        self._post = post or wording.http_post
+        self.offer = style.offer(style.latest_offer(self.root)) if self.root else None
+        self.running = False
+        self.progress = ""
+        self.error = ""
+        self.done = ""
+
+    def message(self) -> dict[str, Any]:
+        return {"type": "coach", "offer": self.offer, "running": self.running, "progress": self.progress,
+                "error": self.error, "done": self.done}
+
+    async def _send(self) -> None:
+        await self._hub.broadcast(self.message())
+
+    async def session_end(self, ended: dict[str, Any]) -> None:
+        if not self.root:
+            return
+        data = await asyncio.to_thread(style.save_session, self.root, ended["passes"], ended["track"], ended["car"], self._style)
+        if data and data["patterns"]:
+            self.offer, self.error, self.done = style.offer(data), "", ""
+            await self._send()
+
+    async def dismiss(self, sid: str) -> None:
+        if self.root:
+            style.update_session(self.root, sid, dismissed=True)
+        if self.offer and self.offer["session"] == sid:
+            self.offer = None
+        await self._send()
+
+    async def generate(self, sid: str) -> None:
+        """Runs in the background; progress goes out as "coach" messages."""
+        if self.running:
+            raise HTTPException(status_code=409, detail="already writing tips")
+        session = style.load_session(self.root, sid) if self.root else None
+        if not session or not session.get("patterns"):
+            raise HTTPException(status_code=404, detail="no such session with habits")
+        self.running, self.error, self.done, self.progress = True, "", "", "Starting the local AI"
+        await self._send()
+        loop = asyncio.get_running_loop()
+
+        def report(text: str) -> None:
+            self.progress = text
+            asyncio.run_coroutine_threadsafe(self._send(), loop)
+
+        def work() -> int:
+            models = wording.ollama_models()
+            if models is None:
+                raise RuntimeError("Ollama is not running. Start it from the Start menu, then try again.")
+            model = wording.DEFAULT_MODEL
+            if not any(m in (model, f"{model}:latest") for m in models):
+                raise RuntimeError(f"Model {model} is not installed. Run: ollama pull {model}")
+            lines = personal.generate(session, model=model, post=self._post, report=report)
+            wording.unload(model, self._post)
+            personal.save(self.root, session, lines, model)
+            style.update_session(self.root, sid, tips=lines)
+            return sum(len(h) for h in lines.values())
+
+        try:
+            count = await asyncio.to_thread(work)
+            names = {t["turn"]: t["name"] for t in session["patterns"]}
+            engine, voice = self._poller.engine, self._poller.voice
+            if engine:
+                engine.reload_personal(engine._personal_track)
+            for turn, habits in (style.load_session(self.root, sid) or {}).get("tips", {}).items():
+                for line in habits.values():
+                    if voice and voice.active:
+                        voice.prepare(f"Coming up, {spoken_turn(Turn(turn, names.get(turn, ''), 0, 0))}. {line}")
+            self.offer = None
+            self.done = f"{count} personal tips ready for {session['track']} ({session['condition']})."
+        except Exception as e:  # shown on the dashboard; the session stays offered
+            log.exception("writing personal tips failed")
+            self.error = str(e) if isinstance(e, RuntimeError) else f"Writing tips failed: {e}"
+        finally:
+            self.running, self.progress = False, ""
+            await self._send()
+
+
 def default_voice(prefs: Prefs) -> Voice:
     return Voice(prefs.voice, prefs.volume, engine=prefs.engine)
 
@@ -103,13 +193,22 @@ def create_app(
             reason = str(e)
             log.warning("telemetry source unavailable: %s", e)
     calls = settings.thresholds["calls"]
+    track_map = TrackMap(settings.thresholds, root=settings.tracks_dir)
+    engine = EventEngine(
+        settings.thresholds, variants=None if settings.prefs.lite else variants, track_map=track_map,
+        personal_root=settings.coach_dir,
+    )
+    engine.tips = settings.prefs.tips
     poller = Poller(
         source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
-        engine=EventEngine(settings.thresholds, variants=None if settings.prefs.lite else variants),
+        engine=engine,
         radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
         voice=voice,
+        track_map=track_map,
     )
     poller.max_priority = CALL_PRIORITY[settings.prefs.calls]
+    desk = TipsDesk(settings, hub, poller)
+    poller.set_session_end(desk.session_end)
 
     def ai_status(prefs: Prefs) -> str:
         return "lite" if prefs.lite else "ready" if variants else "missing"
@@ -135,6 +234,26 @@ def create_app(
     app = FastAPI(title="Pit Wall", lifespan=lifespan)
     app.state.poller = poller
     app.state.hub = hub
+    app.state.desk = desk
+
+    @app.get("/api/coach")
+    async def coach() -> dict[str, Any]:
+        return desk.message()
+
+    @app.post("/api/coach/generate")
+    async def coach_generate(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        sid = str(body.get("session", ""))
+        if desk.running:
+            raise HTTPException(status_code=409, detail="already writing tips")
+        if not desk.root or not style.load_session(desk.root, sid):
+            raise HTTPException(status_code=404, detail="no such session")
+        asyncio.create_task(desk.generate(sid))
+        return {"started": sid}
+
+    @app.post("/api/coach/dismiss")
+    async def coach_dismiss(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        await desk.dismiss(str(body.get("session", "")))
+        return desk.message()
 
     @app.get("/api/status")
     async def status() -> dict[str, Any]:
@@ -162,6 +281,8 @@ def create_app(
         elif poller.voice:
             poller.voice.volume = new.volume
         poller.max_priority = CALL_PRIORITY[new.calls]
+        if poller.engine:
+            poller.engine.tips = new.tips
         if new.lite != old.lite:
             if poller.engine:
                 poller.engine.variants = {} if new.lite else variants
@@ -189,8 +310,11 @@ def create_app(
         await websocket.send_json(poller.status())
         if poller.last is not None:
             await websocket.send_json({"type": "telemetry", "data": poller.last})
+        if poller.track_map and poller.track_map.track:
+            await websocket.send_json(poller.track_map.message())
         await websocket.send_json({"type": "radio_log", "calls": list(poller.radio_log)})
         await websocket.send_json(settings_message(settings.prefs, variants))
+        await websocket.send_json(desk.message())
         hub.clients.add(websocket)
         try:
             while True:

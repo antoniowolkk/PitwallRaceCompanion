@@ -76,8 +76,8 @@ def test_settings_api_applies_live_saves_and_broadcasts(tmp_path):
         first = voices.voices[0]
         wait_for(lambda: first.status == "ready")
         with client.websocket_connect("/ws") as ws:
-            msgs = [ws.receive_json() for _ in range(4)]
-            assert msgs[-1]["type"] == "settings" and msgs[-1]["voice"] == "male"
+            msgs = [ws.receive_json() for _ in range(5)]
+            assert msgs[-2]["type"] == "settings" and msgs[-1]["type"] == "coach" and msgs[-2]["voice"] == "male"
 
             r = client.put("/api/settings", json={"volume": 0.5, "calls": "urgent", "subtitles": False})
             assert r.status_code == 200 and r.json()["volume"] == 0.5
@@ -122,6 +122,8 @@ def test_call_filter_keeps_urgent_calls_only():
         await poller.tick()
         src.snap = Snapshot(laps=2, best_ms=117_000, last_ms=117_000, flag="yellow", **ok)
         now[0] = 20
+        await poller.tick()
+        now[0] = 21.5
         await poller.tick()
 
     asyncio.run(scenario())

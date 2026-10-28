@@ -41,6 +41,16 @@ _FLAG = {
 }
 
 
+_GRIP = {
+    "ACC_GREEN": "green", "ACC_FAST": "fast", "ACC_OPTIMUM": "optimum", "ACC_GREASY": "greasy",
+    "ACC_DAMP": "damp", "ACC_WET": "wet", "ACC_FLOODED": "flooded",
+}
+_RAIN = {
+    "ACC_NO_RAIN": "none", "ACC_DRIZZLE": "drizzle", "ACC_LIGHT_RAIN": "light", "ACC_MEDIUM_RAIN": "medium",
+    "ACC_HEAVY_RAIN": "heavy", "ACC_THUNDERSTORM": "storm",
+}
+
+
 def _wheels(w: Any) -> tuple[float, float, float, float]:
     return (w.front_left, w.front_right, w.rear_left, w.rear_right)
 
@@ -50,9 +60,18 @@ def _text(value: str) -> str:
     return value.split("\x00", 1)[0].strip()
 
 
+def _player_xy(graphics: Any) -> tuple[float, float]:
+    """Our car's ground position. car_coordinates holds every car; car_id says whose is whose."""
+    ids = list(graphics.car_id)
+    i = ids.index(graphics.player_car_id) if graphics.player_car_id in ids else 0
+    c = graphics.car_coordinates[i]
+    return float(c.x), float(c.z)  # y is height
+
+
 def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
     """Map pyaccsharedmemory Physics/Graphics/Static maps to a Snapshot."""
     fuel_per_lap = float(graphics.fuel_per_lap)
+    x, y = _player_xy(graphics)
     return Snapshot(
         status=_STATUS.get(graphics.status.name, "live"),
         session=_SESSION.get(graphics.session_type.name, "unknown"),
@@ -81,6 +100,24 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         pit_window_end=int(static.pit_window_end),
         mandatory_pit_done=bool(graphics.mandatory_pit_done),
         missing_mandatory_pits=int(graphics.missing_mandatory_pits),
+        lap_pos=float(graphics.normalized_car_position),
+        x=x,
+        y=y,
+        throttle=float(physics.gas),
+        brake=float(physics.brake),
+        steer=float(physics.steer_angle),
+        wheel_slip=_wheels(physics.wheel_slip),
+        abs=float(physics.abs),
+        tc=float(physics.tc),
+        brake_bias=float(physics.brake_bias),
+        abs_level=int(graphics.abs_level),
+        tc_level=int(graphics.tc_level),
+        engine_map=int(graphics.engine_map),
+        wet_tyres=bool(graphics.rain_tyres),
+        grip=_GRIP.get(graphics.track_grip_status.name, ""),
+        rain=_RAIN.get(graphics.rain_intensity.name, ""),
+        air_c=float(physics.air_temp),
+        road_c=float(physics.road_temp),
     )
 
 

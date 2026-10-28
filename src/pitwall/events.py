@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from .models import Snapshot
+from . import personal
+from .style import condition
+from .tips import Mistake, TurnCoach
+from .track import TrackMap, Turn
 
 DEFAULT_CALLS = Path(__file__).with_name("calls.toml")
 TYRES = ("front left", "front right", "rear left", "rear right")
@@ -42,6 +46,22 @@ def spoken_decimal(x: float) -> str:
     return f"{words(tenths // 10)} point {_ONES[tenths % 10]}"
 
 
+def spoken_loss(s: float) -> str:
+    """0.3 -> "three tenths", 0.5 -> "half a second", 1.4 -> "one point four seconds"."""
+    tenths = round(s * 10)
+    if tenths == 5:
+        return "half a second"
+    if tenths < 10:
+        return f"{words(tenths)} tenths" if tenths > 1 else "a tenth"
+    if tenths % 10 == 0:
+        return "a second" if tenths == 10 else f"{words(tenths // 10)} seconds"
+    return f"{spoken_decimal(s)} seconds"
+
+
+def spoken_turn(turn: Turn) -> str:
+    return turn.name or f"turn {words(int(turn.number.split('-')[0]))}"
+
+
 def spoken_lap(ms: int) -> str:
     """1:50.260 -> "one fifty point two", 2:05.311 -> "two oh five point three"."""
     tenths = ms // 100
@@ -58,6 +78,7 @@ class Call:
     text: str
     at: float  # engine clock, seconds
     lap: int = 0  # lap number shown to the driver (completed + 1)
+    expire_s: float | None = None  # drop it if not said by then (default: the Radio's)
 
     def to_wire(self) -> dict[str, Any]:
         return {"kind": self.kind, "priority": self.priority, "text": self.text, "lap": self.lap}
@@ -70,6 +91,8 @@ class EventEngine:
         calls: dict[str, dict[str, Any]] | None = None,
         variants: dict[str, list[str]] | None = None,
         rng: random.Random | None = None,
+        track_map: TrackMap | None = None,
+        personal_root: Path | None = None,
     ):
         self._lines = calls or load_calls()
         # AI-written alternatives per kind (wording.py); empty means canned lines only (Lite mode).
@@ -77,8 +100,12 @@ class EventEngine:
         self._rng = rng or random.Random()
         self._last_text: dict[str, str] = {}
         tyres, fuel, c = thresholds["tyres"], thresholds["fuel"], thresholds["calls"]
-        self._temp_hot = tyres["temp_c"][1] + 5.0  # same line the dashboard calls "Hot"
-        self._psi_high = tyres["pressure_psi"][1] + 0.5
+        wet = thresholds["tyres_wet"]
+        # (hot temperature, high pressure) for dry and wet tyres: the same lines the dashboard calls "Hot".
+        self._tyre_limits = {
+            False: (tyres["temp_c"][1] + 5.0, tyres["pressure_psi"][1] + 0.5),
+            True: (wet["temp_c"][1] + 5.0, wet["pressure_psi"][1] + 0.5),
+        }
         self._fuel_warn = fuel["warn_laps"]
         self._fuel_crit = fuel["critical_laps"]
         self._sustain = c["tyre_sustain_s"]
@@ -86,9 +113,18 @@ class EventEngine:
             "tyre_hot": c["tyre_cooldown_s"],
             "tyre_pressure_high": c["tyre_cooldown_s"],
             "fuel_critical": c["fuel_cooldown_s"],
+            "flag_blue": c["blue_cooldown_s"],
         }
+        self._flag_hold = c["flag_hold_s"]
         self._flag_cooldown = c["flag_cooldown_s"]
         self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
+        self.coach = TurnCoach(thresholds, track_map) if track_map else None
+        self.tips = True  # Settings: per-turn tips on or off
+        self._tip_expire = thresholds["tips"]["expire_s"]
+        self.prepare: list[str] = []  # tip lines to render now, so they play at once later
+        self._personal_root = personal_root
+        self.personal: dict[str, dict[str, dict[str, str]]] = {}  # condition -> turn -> habit -> AI-written line
+        self._personal_track: str | None = None
         self.reset()
 
     def reset(self) -> None:
@@ -97,10 +133,16 @@ class EventEngine:
         self._fuel_level = 0  # 0 ok, 1 warn, 2 critical
         self._hot_since: dict[str, float] = {}
         self._pit_said: set[str] = set()  # pit window calls go out once per race
+        self._last_flag = "none"  # last flag called
+        self._flag_seen, self._flag_since, self._flag_done = "none", 0.0, True
+        self._green_for: tuple[str, str] | None = None  # session the start green was called in
+        if self.coach:
+            self.coach.finish()
+            self.coach.reset()
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
         line = self._lines[kind]
-        cooldown = self._flag_cooldown if kind.startswith("flag_") else self._cooldown.get(kind, 0.0)
+        cooldown = self._cooldown.get(kind, self._flag_cooldown if kind.startswith("flag_") else 0.0)
         last = self._last_call.get(kind)
         if last is not None and now - last < cooldown:
             return None
@@ -127,12 +169,24 @@ class EventEngine:
             *self._tyres(snap, now),
             *self._best_lap(prev, snap, now),
             *self._pit_window(prev, snap, now),
+            *self._tips(snap, now),
         ]
         return [c for c in calls if c is not None]
 
     def _flags(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
-        if snap.flag == "none" or (prev is not None and prev.flag == snap.flag):
-            return []
+        if snap.flag != self._flag_seen:
+            self._flag_seen, self._flag_since, self._flag_done = snap.flag, now, False
+        if snap.flag == "none" or self._flag_done or now - self._flag_since < self._flag_hold:
+            return []  # a flag is called once it has shown for flag_hold_s, once per showing
+        self._flag_done = True
+        last, self._last_flag = self._last_flag, snap.flag
+        if snap.flag == "green":
+            # On the Nordschleife ACC flashes green after every local yellow zone (6 calls in
+            # 6 minutes, online race 2026-10-28). Green is news at the start, or after a yellow.
+            session = (snap.track, snap.session)
+            if self._green_for == session and last != "yellow":
+                return []
+            self._green_for = session
         kind = f"flag_{snap.flag}"
         return [self._call(kind, now, snap)] if kind in self._lines else []
 
@@ -151,9 +205,10 @@ class EventEngine:
     def _tyres(self, snap: Snapshot, now: float) -> list[Call | None]:
         hottest = max(range(4), key=lambda i: snap.tyre_temp_c[i])
         highest = max(range(4), key=lambda i: snap.tyre_pressure_psi[i])
+        temp_hot, psi_high = self._tyre_limits[snap.wet_tyres]
         checks = (
-            ("tyre_hot", snap.tyre_temp_c[hottest] > self._temp_hot, hottest),
-            ("tyre_pressure_high", snap.tyre_pressure_psi[highest] > self._psi_high, highest),
+            ("tyre_hot", snap.tyre_temp_c[hottest] > temp_hot, hottest),
+            ("tyre_pressure_high", snap.tyre_pressure_psi[highest] > psi_high, highest),
         )
         calls = []
         for kind, over, i in checks:
@@ -205,6 +260,40 @@ class EventEngine:
             once("pit_window_missed")
         return calls
 
+    def _tips(self, snap: Snapshot, now: float) -> list[Call | None]:
+        if not self.coach:
+            return []
+        if snap.track != self._personal_track:
+            self.reload_personal(snap.track)
+        found, due = self.coach.update(snap)
+        for m in found:
+            # Worded now, a lap before it is said, so the voice has time to render it.
+            line = self.personal_line(m, snap)
+            if line:
+                m.extra["text"], m.extra["personal"] = f"Coming up, {spoken_turn(m.turn)}. {line}", True
+            else:
+                m.extra["text"] = self._pick(m.kind, self._lines[m.kind]["text"]).format(
+                    turn=spoken_turn(m.turn), loss=spoken_loss(m.loss_s)
+                )
+            if self.tips:
+                self.prepare.append(m.extra["text"])
+        if not self.tips:
+            return []
+        return [self._tip_call(m, now, snap) for m in due]
+
+    def reload_personal(self, track: str | None) -> None:
+        self._personal_track = track
+        self.personal = personal.load(self._personal_root, track or "")
+
+    def personal_line(self, m: Mistake, snap: Snapshot) -> str | None:
+        """The AI-written line for this habit in this turn, written for today's conditions."""
+        cond = condition({"rain": snap.rain, "grip": snap.grip, "wet_tyres": snap.wet_tyres})
+        return self.personal.get(cond, {}).get(m.turn.number, {}).get(m.pattern)
+
+    def _tip_call(self, m: Mistake, now: float, snap: Snapshot) -> Call:
+        priority = int(self._lines[m.kind]["priority"])
+        return Call(m.kind, priority, m.extra["text"], now, snap.laps + 1, expire_s=self._tip_expire)
+
     def _best_lap(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
         if prev is None or snap.laps < 2 or snap.best_ms is None or snap.laps == prev.laps:
             return []
@@ -229,7 +318,7 @@ class Radio:
             self._queue.append(call)
 
     def next(self, now: float) -> Call | None:
-        self._queue = [c for c in self._queue if now - c.at <= self.expire_s]
+        self._queue = [c for c in self._queue if now - c.at <= (c.expire_s or self.expire_s)]
         if not self._queue:
             return None
         call = min(self._queue, key=lambda c: (c.priority, c.at))

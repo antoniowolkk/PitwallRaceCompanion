@@ -47,6 +47,7 @@ class Prefs:
     subtitles: bool = True
     subtitle_size: str = "normal"
     lite: bool = False  # Lite mode: canned lines only, no AI-written variants
+    tips: bool = True  # per-turn tips before a turn where the last lap went wrong
 
     def updated(self, changes: dict[str, Any]) -> Prefs:
         """A copy with changes applied; raises ValueError on unknown keys or bad values."""
@@ -61,7 +62,7 @@ class Prefs:
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
                     raise ValueError("volume must be between 0 and 1")
                 value = float(value)
-            if key in ("subtitles", "lite") and not isinstance(value, bool):
+            if key in ("subtitles", "lite", "tips") and not isinstance(value, bool):
                 raise ValueError(f"{key} must be true or false")
             data[key] = value
         return Prefs(**data)
@@ -102,4 +103,6 @@ class Settings:
     prefs: Prefs = field(default_factory=Prefs)
     prefs_path: Path | None = None  # where the Settings screen saves; None keeps changes in memory
     variants: dict[str, list[str]] = field(default_factory=dict)  # AI-written lines (wording.py)
+    tracks_dir: Path | None = None  # learned track outlines; None keeps them in memory
+    coach_dir: Path | None = None  # saved sessions and personal tips; None: not saved, no offer
     thresholds: dict[str, Any] = field(default_factory=load_thresholds)

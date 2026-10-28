@@ -42,6 +42,8 @@ def _serve(args: argparse.Namespace) -> None:
         prefs=prefs,
         prefs_path=prefs_path,
         variants=variants,
+        tracks_dir=data_dir() / "tracks",
+        coach_dir=data_dir(),
     )
     if args.source:
         settings.source = args.source
@@ -127,8 +129,59 @@ def _lines(args: argparse.Namespace) -> None:
     print(f"\nDone: {new} new voice lines cached.")
 
 
+def _tracks(args: argparse.Namespace) -> None:
+    from .track import download_lovely
+
+    root = data_dir() / "tracks"
+    print("Downloading turn names for every ACC track from Lovely Track Data (CC BY-NC-SA 4.0, lsr.gg) ...")
+    print(f"Saved {download_lovely(root)} tracks to {root / 'lovely'}")
+
+
+def _tips(args: argparse.Namespace) -> None:
+    from . import personal, style, wording
+
+    root = data_dir()
+    session = style.load_session(root, args.session) if args.session else style.latest_offer(root)
+    if args.action == "show":
+        if session:
+            print(f"Session {session['id']}: {session['track']}, {session['car']}, {session['session']}, "
+                  f"{session['laps']} laps, {session['condition']}")
+            for t in session["patterns"]:
+                print(f"  {t['name'] or 'Turn ' + t['turn']}:")
+                for p in t["patterns"]:
+                    print(f"    {p['pattern']}: {p['fact']}")
+        else:
+            print("No session with habits waiting for tips.")
+        for track_file in sorted((root / "tips").glob("*.json")):
+            for cond, turns in personal.load(root, track_file.stem).items():
+                print(f"Personal tips, {track_file.stem} ({cond}):")
+                for turn, habits in turns.items():
+                    for habit, line in habits.items():
+                        print(f"  T{turn} {habit}: {line}")
+        return
+
+    if not session or not session.get("patterns"):
+        raise SystemExit("No session with habits to write tips for. Drive a session first (practice or qualifying).")
+    print(f"{session['track']} {session['session']}, {session['laps']} laps, {session['condition']}: "
+          f"habits in {len(session['patterns'])} turns.")
+    models = wording.ollama_models()
+    if models is None:
+        raise SystemExit("Ollama is not running. Start it from the Start menu (or `ollama serve`) and try again.")
+    if not args.yes:
+        answer = input(f"Write personal tips with {wording.DEFAULT_MODEL}? It uses the graphics card for about a minute. [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Nothing written.")
+            return
+    lines = personal.generate(session)
+    wording.unload(wording.DEFAULT_MODEL)
+    path = personal.save(root, session, lines, wording.DEFAULT_MODEL)
+    style.update_session(root, session["id"], tips=lines)
+    print(f"Saved {sum(len(h) for h in lines.values())} tips to {path}. Pit Wall picks them up at the next session.")
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("phonemizer").setLevel(logging.ERROR)  # "words count mismatch" on every line, harmless
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
     p.add_argument("--source", choices=["acc", "mock", "replay"])
     p.add_argument("--replay", type=Path, help="recording for --source replay")
@@ -158,6 +211,16 @@ def main(argv: list[str] | None = None) -> None:
     w.add_argument("--model", default="qwen3:4b")
     w.add_argument("--count", type=int, default=5, help="variants per call")
     w.set_defaults(func=_lines)
+
+    t = sub.add_parser("tracks", help="turn names for every ACC track")
+    t.add_argument("action", choices=["download"])
+    t.set_defaults(func=_tracks)
+
+    k = sub.add_parser("tips", help="personal turn tips written by the local AI from your last session")
+    k.add_argument("action", choices=["show", "generate"])
+    k.add_argument("--session", help="session id (default: the newest one waiting for tips)")
+    k.add_argument("--yes", action="store_true", help="do not ask before running the AI")
+    k.set_defaults(func=_tips)
 
     args = p.parse_args(argv)
     args.func(args)

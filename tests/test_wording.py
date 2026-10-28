@@ -80,7 +80,8 @@ def test_engine_varies_lines_and_never_repeats_back_to_back():
     said = []
     for i in range(12):
         e.update(Snapshot(status="live", flag="none", tyre_pressure_psi=(26.5,) * 4, tyre_temp_c=(85,) * 4), i * 20)
-        calls = e.update(Snapshot(status="live", flag="yellow", tyre_pressure_psi=(26.5,) * 4, tyre_temp_c=(85,) * 4), i * 20 + 1)
+        e.update(Snapshot(status="live", flag="yellow", tyre_pressure_psi=(26.5,) * 4, tyre_temp_c=(85,) * 4), i * 20 + 1)
+        calls = e.update(Snapshot(status="live", flag="yellow", tyre_pressure_psi=(26.5,) * 4, tyre_temp_c=(85,) * 4), i * 20 + 2.5)
         said.append(calls[0].text)
     assert len(set(said)) == 3  # canned + both variants
     assert all(a != b for a, b in zip(said, said[1:]))

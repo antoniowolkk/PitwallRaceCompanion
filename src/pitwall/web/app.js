@@ -76,14 +76,150 @@
     }
   }
 
-  function tyreLevel(temp, psi) {
-    const [tLo, tHi] = state.cfg.tyre_temp_c;
-    const [pLo, pHi] = state.cfg.tyre_pressure_psi;
+  function tyreLevel(temp, psi, wet) {
+    const [tLo, tHi] = wet ? state.cfg.tyre_temp_c_wet : state.cfg.tyre_temp_c;
+    const [pLo, pHi] = wet ? state.cfg.tyre_pressure_psi_wet : state.cfg.tyre_pressure_psi;
     if (temp > tHi + 5 || psi > pHi + 0.5) return ["crit", "Hot"];
     if (temp > tHi || psi > pHi) return ["warn", "High"];
     if (temp < tLo || psi < pLo) return ["cold", "Cold"];
     return ["good", "OK"];
   }
+
+  // Track map: outline and turns come in a "track" message; the car dot and the
+  // current / next turn follow lap_pos and x, y from telemetry.
+  const SVG = "http://www.w3.org/2000/svg";
+  let track = null; // { track, points, turns, length_m, official }
+  let mapTurn; // turn highlighted on the map, so it is redrawn only on change
+
+  const turnName = (t) => (t ? `T${t.number}${t.name ? ` ${t.name}` : ""}` : "—");
+  const inside = (t, pos) => (t.start <= t.end ? pos >= t.start && pos <= t.end : pos >= t.start || pos <= t.end);
+  const pointAt = (pos) => track.points[Math.floor(((pos % 1) + 1) % 1 * track.points.length) % track.points.length];
+
+  function turnAt(pos) {
+    const current = track.turns.find((t) => inside(t, pos)) || null;
+    let next = null, gap = 2;
+    for (const t of track.turns) {
+      const ahead = (t.start - pos + 1) % 1;
+      if (t !== current && ahead < gap) [next, gap] = [t, ahead];
+    }
+    return [current, next, gap];
+  }
+
+  function turnPath(t) {
+    const n = track.points.length, from = Math.floor(t.start * n), span = (Math.floor(t.end * n) - from + n) % n;
+    const pts = [];
+    for (let i = 0; i <= span; i++) pts.push(track.points[(from + i) % n].join(","));
+    return `M${pts.join("L")}`;
+  }
+
+  function drawTrack() {
+    $("track-name").textContent = track ? track.track.replaceAll("_", " ") : "";
+    const map = $("map"), labels = $("map-labels");
+    labels.replaceChildren();
+    $("map-line").setAttribute("d", "");
+    $("map-turn").setAttribute("d", "");
+    $("map-car").setAttribute("r", 0);
+    mapTurn = undefined;
+    if (!track || !track.points) {
+      $("map-state").textContent = track ? "○ Learning the track: drive one full lap" : "○ No track yet";
+      return;
+    }
+    const pts = track.points, xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const size = Math.max(maxX - minX, maxY - minY), pad = size * 0.07;
+    map.setAttribute("viewBox", `${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}`);
+    $("map-line").setAttribute("d", `M${pts.map((p) => p.join(",")).join("L")}Z`);
+    $("map-car").dataset.r = size * 0.022;
+    // Turn numbers sit just outside the line, pushed away from the middle of the map.
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, font = size * 0.05;
+    for (const t of track.turns) {
+      const [x, y] = pointAt(t.start + ((t.end - t.start + 1) % 1) / 2);
+      const d = Math.hypot(x - cx, y - cy) || 1;
+      const text = document.createElementNS(SVG, "text");
+      text.setAttribute("x", x + ((x - cx) / d) * font * 1.3);
+      text.setAttribute("y", y + ((y - cy) / d) * font * 1.3);
+      text.setAttribute("font-size", font);
+      text.textContent = t.number;
+      text.turn = t;
+      labels.append(text);
+    }
+    $("map-state").textContent = {
+      official: "● Official turn numbers",
+      lovely: "● Turn names: Lovely Track Data (CC BY-NC-SA)",
+    }[track.source] || "▲ Turns numbered from your lap";
+  }
+
+  function renderTrack(t) {
+    if (!track || t.lap_pos === undefined) return;
+    const [current, next, gap] = turnAt(t.lap_pos);
+    $("turn-now").textContent = t.in_pit_lane ? "Pit lane" : current ? turnName(current) : "Straight";
+    $("turn-next").textContent = turnName(next);
+    $("turn-dist").textContent = next && track.length_m && !t.in_pit_lane ? `in ${Math.round(gap * track.length_m)} m` : "";
+    if (!track.points) return;
+    const car = $("map-car");
+    car.setAttribute("cx", t.x);
+    car.setAttribute("cy", t.y);
+    car.setAttribute("r", car.dataset.r);
+    if (current !== mapTurn) {
+      mapTurn = current;
+      $("map-turn").setAttribute("d", current ? turnPath(current) : "");
+      for (const text of $("map-labels").children) text.classList.toggle("on", text.turn === current);
+    }
+  }
+
+  // Personal turn tips: after a session with habits, the card asks before the local AI
+  // writes anything; nothing runs until the driver clicks "Write tips".
+  const HABIT = {
+    lockup: "lockups", wheelspin: "wheelspin", off: "track limits", early_brake: "braking early",
+    low_min_speed: "low minimum speed", coasting: "coasting", late_throttle: "late on the throttle",
+  };
+  let coach = null, coachTimer = null;
+
+  function renderCoach(c) {
+    coach = c;
+    const box = $("coach"), o = c.offer;
+    clearTimeout(coachTimer);
+    box.hidden = !(o || c.running || c.error || c.done);
+    if (box.hidden) return;
+    box.dataset.level = c.error ? "bad" : c.running ? "idle" : o ? "warn" : "good";
+    let text;
+    if (c.running) text = `○ Writing tips with the local AI… ${c.progress}`;
+    else if (c.error) text = `✕ ${c.error}`;
+    else if (o) text = `▲ Habits found at ${o.track.replaceAll("_", " ")} (${o.kind}, ${o.laps} laps, ${o.condition}). Write personal tips with the local AI?`;
+    else text = `● ${c.done}`;
+    $("coach-text").textContent = text;
+    const list = $("coach-turns");
+    list.replaceChildren();
+    for (const t of o && !c.running ? o.turns : []) {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = t.name || `Turn ${t.turn}`;
+      li.append(b, ` ${t.habits.map((h) => HABIT[h] || h).join(", ")}`);
+      list.append(li);
+    }
+    const live = state.status && state.status.acc === "connected";
+    $("coach-note").textContent = o && !c.running
+      ? `Uses the graphics card for about a minute${live ? "; ACC is running, so best after you quit it" : ""}. Used from your next session at this track.`
+      : "";
+    $("coach-actions").hidden = !o || c.running;
+    if (!o && !c.running && !c.error) coachTimer = setTimeout(() => ($("coach").hidden = true), 20000);
+  }
+
+  async function coachPost(path) {
+    if (!coach || !coach.offer) return;
+    $("coach-actions").hidden = true;
+    try {
+      const res = await fetch(path, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session: coach.offer.session }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    } catch (err) {
+      renderCoach({ ...coach, error: `Could not start: ${err.message}` });
+    }
+  }
+  $("coach-yes").addEventListener("click", () => coachPost("/api/coach/generate"));
+  $("coach-no").addEventListener("click", () => coachPost("/api/coach/dismiss"));
 
   // Back to the "no data" look, so old numbers never sit under a Waiting banner.
   function clear() {
@@ -105,6 +241,9 @@
     });
     $("last-delta").textContent = " ";
     $("car-track").textContent = " ";
+    for (const id of ["turn-now", "turn-next"]) $(id).textContent = "—";
+    $("turn-dist").textContent = "";
+    $("map-car").setAttribute("r", 0);
   }
 
   function render() {
@@ -152,7 +291,7 @@
     document.querySelectorAll(".tyre").forEach((el) => {
       const i = Number(el.dataset.i);
       const temp = t.tyre_temp_c[i], psi = t.tyre_pressure_psi[i];
-      const [level, word] = tyreLevel(temp, psi);
+      const [level, word] = tyreLevel(temp, psi, t.wet_tyres);
       el.dataset.level = level;
       el.querySelector(".t").textContent = temp.toFixed(0);
       el.querySelector(".p").textContent = psi.toFixed(1);
@@ -174,6 +313,7 @@
       d.textContent = " ";
     }
     $("car-track").textContent = [t.car, t.track].filter(Boolean).join(" · ").replaceAll("_", " ");
+    renderTrack(t);
   }
 
   // Radio: subtitle shows the latest call ~4 s, the log keeps the last 20, newest first.
@@ -248,6 +388,13 @@
       case "settings":
         applySettings(msg);
         return;
+      case "track":
+        track = msg;
+        drawTrack();
+        break;
+      case "coach":
+        renderCoach(msg);
+        return;
     }
     schedule();
   }
@@ -305,6 +452,7 @@
       if (input) input.checked = true;
     }
     form.elements.subtitles.checked = s.subtitles;
+    form.elements.tips.checked = s.tips;
     if (document.activeElement !== $("volume")) $("volume").value = Math.round(s.volume * 100);
     $("volume-out").textContent = `${Math.round(s.volume * 100)}%`;
     form.querySelectorAll('input[name="subtitle_size"]').forEach((i) => (i.disabled = !s.subtitles));
@@ -347,6 +495,7 @@
     const t = e.target;
     if (t.name === "volume") save({ volume: Number(t.value) / 100 });
     else if (t.name === "subtitles") save({ subtitles: t.checked });
+    else if (t.name === "tips") save({ tips: t.checked });
     else if (t.name === "lite") save({ lite: t.value === "true" });
     else if (t.type === "radio") save({ [t.name]: t.value });
   });

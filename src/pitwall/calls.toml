@@ -71,3 +71,21 @@ text = "Orange flag. Something's up with the car, check it."
 [flag_chequered]
 priority = 2
 text = "Chequered flag! Good job, bring it home."
+
+# Per-turn tips, said a few seconds before the turn where the last lap went wrong.
+# {turn} "La Source" (or "turn three"), {loss} "three tenths".
+[tip_lockup]
+priority = 2
+text = "Coming up, {turn}. You locked up there last lap, brake a touch earlier."
+
+[tip_wheelspin]
+priority = 2
+text = "Coming up, {turn}. Bit of wheelspin on the way out last lap, easy on the throttle."
+
+[tip_off]
+priority = 2
+text = "Coming up, {turn}. Track limits got you there last lap, keep it tidy."
+
+[tip_slow]
+priority = 2
+text = "Coming up, {turn}. You dropped {loss} there last lap, compared to your best."
