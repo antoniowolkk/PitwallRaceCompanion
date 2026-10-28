@@ -75,6 +75,12 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         lap_valid=bool(graphics.is_valid_lap),
         flag=_FLAG.get(graphics.flag.name, "none"),
         in_pit_lane=bool(graphics.is_in_pit_lane),
+        in_pit=bool(graphics.is_in_pit),
+        session_time_left=float(graphics.session_time_left),
+        pit_window_start=int(static.pit_window_start),
+        pit_window_end=int(static.pit_window_end),
+        mandatory_pit_done=bool(graphics.mandatory_pit_done),
+        missing_mandatory_pits=int(graphics.missing_mandatory_pits),
     )
 
 

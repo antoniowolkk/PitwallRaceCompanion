@@ -13,6 +13,10 @@ pressure_psi = [26.0, 27.0]
 warn_laps = 3.0
 critical_laps = 1.5
 
+[pit]
+# Warn this long before the mandatory pit window closes if the stop is still to do.
+closing_warn_s = 120.0
+
 [calls]
 # A hot tyre or high pressure must last this long before a call, so one kerb does not trigger it.
 tyre_sustain_s = 10.0

@@ -46,7 +46,7 @@ def spoken_lap(ms: int) -> str:
     tenths = ms // 100
     minutes, rest = divmod(tenths, 600)
     secs, tenth = divmod(rest, 10)
-    sec_words = words(secs) if secs >= 10 else "oh " + _ONES[secs]
+    sec_words = words(secs) if secs >= 10 else "oh oh" if secs == 0 else "oh " + _ONES[secs]
     return f"{words(minutes)} {sec_words} point {_ONES[tenth]}"
 
 
@@ -77,6 +77,7 @@ class EventEngine:
             "fuel_critical": c["fuel_cooldown_s"],
         }
         self._flag_cooldown = c["flag_cooldown_s"]
+        self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
         self.reset()
 
     def reset(self) -> None:
@@ -84,6 +85,7 @@ class EventEngine:
         self._last_call: dict[str, float] = {}
         self._fuel_level = 0  # 0 ok, 1 warn, 2 critical
         self._hot_since: dict[str, float] = {}
+        self._pit_said: set[str] = set()  # pit window calls go out once per race
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
         line = self._lines[kind]
@@ -104,6 +106,7 @@ class EventEngine:
             *self._fuel(prev, snap, now),
             *self._tyres(snap, now),
             *self._best_lap(prev, snap, now),
+            *self._pit_window(prev, snap, now),
         ]
         return [c for c in calls if c is not None]
 
@@ -143,6 +146,43 @@ class EventEngine:
                     kind, now, snap, tyre=TYRES[i],
                     temp=words(round(snap.tyre_temp_c[i])), psi=spoken_decimal(snap.tyre_pressure_psi[i]),
                 ))
+        return calls
+
+    def _pit_window(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
+        """Mandatory pit stop window, race only.
+
+        ACC gives the window in ms and centres it on half distance: in a 5-minute race
+        start + end = 300000 = the race length (2026-10-28 recording). So race time
+        elapsed = start + end - time left, which also works when Pit Wall joins mid-race.
+        start >= end means no window.
+        """
+        if snap.session != "race":
+            return []
+        calls: list[Call | None] = []
+
+        def once(kind: str, **fields: Any) -> None:
+            if kind not in self._pit_said:
+                self._pit_said.add(kind)
+                calls.append(self._call(kind, now, snap, **fields))
+
+        # Not yet seen live which field ACC updates first, so either one counts.
+        if prev is not None and prev.missing_mandatory_pits > 0 and not prev.mandatory_pit_done and (
+            snap.missing_mandatory_pits < prev.missing_mandatory_pits or snap.mandatory_pit_done
+        ):
+            once("pit_stop_done")
+        start, end = snap.pit_window_start, snap.pit_window_end
+        if end <= start or snap.missing_mandatory_pits <= 0 or snap.mandatory_pit_done:
+            return calls
+        elapsed = start + end - snap.session_time_left
+        left_ms = end - elapsed
+
+        if start <= elapsed <= end:
+            once("pit_window_open")
+            if left_ms <= self._closing_warn_ms:
+                minutes = max(1, round(left_ms / 60000))
+                once("pit_window_closing", minutes="a minute" if minutes == 1 else f"{words(minutes)} minutes")
+        elif elapsed > end:
+            once("pit_window_missed")
         return calls
 
     def _best_lap(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:

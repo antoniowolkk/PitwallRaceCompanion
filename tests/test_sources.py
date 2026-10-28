@@ -86,11 +86,13 @@ def test_from_acc_maps_library_fields():
         status=_Status.ACC_LIVE, session_type=_Session.ACC_RACE, flag=_Flag.ACC_YELLOW_FLAG,
         fuel_per_lap=2.9, fuel_estimated_laps=14.2, completed_lap=5,
         current_time=34_000, last_time=104_321, best_time=NO_TIME,
-        is_valid_lap=1, is_in_pit_lane=0,
+        is_valid_lap=1, is_in_pit_lane=0, is_in_pit=0, session_time_left=1_800_000.0,
+        mandatory_pit_done=0, missing_mandatory_pits=1,
     )
     # Real ACC pads static strings with NULs.
     static = SimpleNamespace(
-        car_model="ferrari_296_gt3" + "\x00" * 18, track="barcelona" + "\x00" * 24, max_rpm=8500, max_fuel=120.0
+        car_model="ferrari_296_gt3" + "\x00" * 18, track="barcelona" + "\x00" * 24, max_rpm=8500, max_fuel=120.0,
+        pit_window_start=1_200_000, pit_window_end=2_400_000,
     )
     snap = from_acc(physics, graphics, static)
     assert snap.car == "ferrari_296_gt3"
@@ -102,6 +104,8 @@ def test_from_acc_maps_library_fields():
     assert snap.tyre_temp_c == (84, 82, 79, 80)
     assert snap.last_ms == 104_321
     assert snap.best_ms is None
+    assert (snap.pit_window_start, snap.pit_window_end, snap.missing_mandatory_pits) == (1_200_000, 2_400_000, 1)
+    assert snap.to_wire()["session_time_left"] == 1_800_000
 
 
 def test_pause_holds_last_live_values():
