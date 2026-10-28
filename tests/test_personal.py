@@ -40,6 +40,13 @@ def test_patterns_find_repeated_habits_against_the_best_pass():
     assert style.patterns(SESSION_PASSES[:2], STYLE) == []  # too few passes to call it a habit
 
 
+def test_only_qualifying_sessions_build_habits(tmp_path):
+    race = [{**r, "session": "race"} for r in SESSION_PASSES]
+    data = style.save_session(tmp_path, race, "Spa", "car", STYLE)
+    assert data["session"] == "race" and data["patterns"] == [] and len(data["passes"]) == 5  # kept, not learned from
+    assert style.latest_offer(tmp_path) is None
+
+
 def fake_ollama(tips_per_call):
     sent = []
 

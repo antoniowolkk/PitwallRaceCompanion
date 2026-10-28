@@ -73,3 +73,6 @@ full_m = 20.0
 # After a session: a turn needs this many passes, and a habit this many of them, to be a pattern.
 min_passes = 3
 min_repeats = 2
+# Sessions that personal tips learn from (user's choice: qualifying only; race laps are
+# shaped by traffic). Add "practice" or "hotlap" here to learn from those too.
+learn_from = ["qualify"]

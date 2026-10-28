@@ -124,11 +124,13 @@ def sessions_dir(root: Path) -> Path:
 
 
 def save_session(root: Path, passes: list[dict[str, Any]], track: str, car: str, c: dict[str, Any]) -> dict[str, Any] | None:
-    """Save a finished session; returns its summary, or None when it had nothing to learn from."""
-    found = patterns(passes, c)
+    """Save a finished session; returns its summary, or None when it had nothing to learn from.
+    Habits come only from the session types in learn_from: in a race, traffic makes the
+    driver brake early or lift, which is not a habit. Other sessions are kept, without habits."""
     if not passes:
         return None
     ctx = context(passes, track, car)
+    found = patterns(passes, c) if ctx["session"] in c["learn_from"] else []
     sid = f"{time.strftime('%Y%m%d-%H%M%S')}_{re.sub(r'[^\w-]', '_', track)}_{ctx['session']}"
     data = {"id": sid, **ctx, "patterns": found, "passes": passes, "tips": None, "dismissed": False}
     path = sessions_dir(root) / f"{sid}.json"
