@@ -127,6 +127,8 @@ class EventEngine:
         self._fuel_level = 0  # 0 ok, 1 warn, 2 critical
         self._hot_since: dict[str, float] = {}
         self._pit_said: set[str] = set()  # pit window calls go out once per race
+        self._last_flag = "none"  # last flag other than none
+        self._green_for: tuple[str, str] | None = None  # session the start green was called in
         if self.coach:
             self.coach.finish()
             self.coach.reset()
@@ -167,6 +169,14 @@ class EventEngine:
     def _flags(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
         if snap.flag == "none" or (prev is not None and prev.flag == snap.flag):
             return []
+        last, self._last_flag = self._last_flag, snap.flag
+        if snap.flag == "green":
+            # On the Nordschleife ACC flashes green after every local yellow zone (6 calls in
+            # 6 minutes, online race 2026-10-28). Green is news at the start, or after a yellow.
+            session = (snap.track, snap.session)
+            if self._green_for == session and last != "yellow":
+                return []
+            self._green_for = session
         kind = f"flag_{snap.flag}"
         return [self._call(kind, now, snap)] if kind in self._lines else []
 

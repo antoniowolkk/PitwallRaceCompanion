@@ -190,3 +190,11 @@ def test_no_pit_calls_without_a_window_or_outside_races():
 
 def test_two_oh_oh():
     assert spoken_lap(120_500) == "two oh oh point five"
+
+
+def test_green_flag_once_per_session_unless_after_yellow():
+    e = engine()
+    said = []
+    for i, flag in enumerate(["none", "green", "none", "green", "none", "green", "yellow", "none", "green", "none", "green"]):
+        said += kinds(e.update(snap(flag=flag), i * 20))
+    assert said == ["flag_green", "flag_yellow", "flag_green"]
