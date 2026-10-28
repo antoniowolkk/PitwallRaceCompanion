@@ -66,6 +66,8 @@ class Snapshot:
     brake: float = 0.0
     steer: float = 0.0
     wheel_slip: Wheels = (0.0, 0.0, 0.0, 0.0)
+    abs: float = 0.0  # ABS working right now, 0..1
+    tc: float = 0.0  # traction control working right now, 0..1
 
     def to_wire(self) -> dict[str, Any]:
         """Rounded values, so the diff only sends changes a driver can see."""
@@ -104,6 +106,8 @@ class Snapshot:
             "brake": round(self.brake, 2),
             "steer": round(self.steer, 2),
             "wheel_slip": [round(s, 2) for s in self.wheel_slip],
+            "abs": round(self.abs, 2),
+            "tc": round(self.tc, 2),
         }
 
     @classmethod

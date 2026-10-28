@@ -43,7 +43,7 @@ def test_learns_outline_from_one_lap_saves_and_reloads(tmp_path):
     sent = drive(m)
     assert sent[0]["points"] is None and sent[0]["track"] == "mock_circuit"  # known track, no outline yet
     ready = sent[-1]
-    assert len(ready["points"]) == BINS and not ready["official"]
+    assert len(ready["points"]) == BINS and ready["source"] == "auto"
     assert 4400 < ready["length_m"] < 5000  # mock lap is ~4.65 km
     assert len(ready["turns"]) >= 6 and ready["turns"][0]["number"] == "1"
     assert (tmp_path / "mock_circuit.json").exists()
@@ -75,3 +75,30 @@ def test_websocket_sends_track_on_connect():
         msgs = [ws.receive_json() for _ in range(4)]
     track = next(m for m in msgs if m["type"] == "track")
     assert track["track"] == "mock_circuit" and len(track["points"]) == BINS
+
+
+def test_lovely_turns_merge_parts_and_handle_marker_only():
+    from pitwall.track import lovely_turns
+
+    data = {"length": 5000, "turn": [
+        {"name": "Rettifilo", "start": 0.15, "end": 0.16},
+        {"name": "Rettifilo", "start": 0.165, "end": 0.18},
+        {"name": "Curva Grande", "start": 0.22, "end": 0.31},
+        {"name": "Snake", "marker": 0.5},  # apex only: 50 m either side
+    ]}
+    assert [(t.number, t.name, t.start, t.end) for t in lovely_turns(data)] == [
+        ("1-2", "Rettifilo", 0.15, 0.18), ("3", "Curva Grande", 0.22, 0.31), ("4", "Snake", 0.49, 0.51)]
+
+
+def test_download_lovely_saves_by_file_name_and_map_uses_it(tmp_path):
+    from pitwall.track import LOVELY, download_lovely
+
+    files = {
+        LOVELY + "manifest.json": {"tracks": {"assettocorsacompetizione": [
+            {"trackName": "Nurburgring GP", "trackId": "murburgring", "path": "assettocorsacompetizione/nurburgring.json"}]}},
+        LOVELY + "assettocorsacompetizione/nurburgring.json": {"length": 5137, "turn": [{"name": "Castrol S", "start": 0.05, "end": 0.08}]},
+    }
+    assert download_lovely(tmp_path, get=files.__getitem__, report=lambda s: None) == 1
+    m = TrackMap(load_thresholds(), root=tmp_path, turns={})
+    msg = m.update(Snapshot(status="live", track="nurburgring", laps=0))
+    assert msg["source"] == "lovely" and msg["turns"][0]["name"] == "Castrol S" and msg["length_m"] == 5137

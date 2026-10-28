@@ -36,3 +36,24 @@ turn_drop_kmh = 25.0
 turn_window = 0.03
 # and the turn spans this many metres either side of that point.
 turn_half_m = 60.0
+
+[tips]
+# Per-turn tips. A pass through a turn is timed from pre_m before it to post_m after it.
+pre_m = 150.0
+post_m = 150.0
+# Say the tip this many seconds before the turn at the current speed, but at least
+# min_lead_m before it; closer than min_gap_m (the previous turn ran too close) it is skipped.
+lead_s = 5.0
+min_lead_m = 150.0
+min_gap_m = 60.0
+# ACC wheel slip is about 1 in normal hard braking and 3-5 when a wheel locks
+# (Spa out lap, Bruxelles). It must show on this many samples (10 Hz) to count.
+lock_slip = 3.0
+spin_slip = 3.0
+spin_throttle = 0.5
+slip_samples = 2
+# A clean pass this much slower than the best one through that turn is worth a word.
+loss_s = 0.5
+max_per_lap = 1
+# A tip not started within this many seconds is dropped: late is worse than never.
+expire_s = 2.0

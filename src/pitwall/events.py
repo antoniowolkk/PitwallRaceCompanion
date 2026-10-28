@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from .models import Snapshot
+from .tips import Mistake, TurnCoach
+from .track import TrackMap, Turn
 
 DEFAULT_CALLS = Path(__file__).with_name("calls.toml")
 TYRES = ("front left", "front right", "rear left", "rear right")
@@ -42,6 +44,22 @@ def spoken_decimal(x: float) -> str:
     return f"{words(tenths // 10)} point {_ONES[tenths % 10]}"
 
 
+def spoken_loss(s: float) -> str:
+    """0.3 -> "three tenths", 0.5 -> "half a second", 1.4 -> "one point four seconds"."""
+    tenths = round(s * 10)
+    if tenths == 5:
+        return "half a second"
+    if tenths < 10:
+        return f"{words(tenths)} tenths" if tenths > 1 else "a tenth"
+    if tenths % 10 == 0:
+        return "a second" if tenths == 10 else f"{words(tenths // 10)} seconds"
+    return f"{spoken_decimal(s)} seconds"
+
+
+def spoken_turn(turn: Turn) -> str:
+    return turn.name or f"turn {words(int(turn.number.split('-')[0]))}"
+
+
 def spoken_lap(ms: int) -> str:
     """1:50.260 -> "one fifty point two", 2:05.311 -> "two oh five point three"."""
     tenths = ms // 100
@@ -58,6 +76,7 @@ class Call:
     text: str
     at: float  # engine clock, seconds
     lap: int = 0  # lap number shown to the driver (completed + 1)
+    expire_s: float | None = None  # drop it if not said by then (default: the Radio's)
 
     def to_wire(self) -> dict[str, Any]:
         return {"kind": self.kind, "priority": self.priority, "text": self.text, "lap": self.lap}
@@ -70,6 +89,7 @@ class EventEngine:
         calls: dict[str, dict[str, Any]] | None = None,
         variants: dict[str, list[str]] | None = None,
         rng: random.Random | None = None,
+        track_map: TrackMap | None = None,
     ):
         self._lines = calls or load_calls()
         # AI-written alternatives per kind (wording.py); empty means canned lines only (Lite mode).
@@ -89,6 +109,10 @@ class EventEngine:
         }
         self._flag_cooldown = c["flag_cooldown_s"]
         self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
+        self.coach = TurnCoach(thresholds, track_map) if track_map else None
+        self.tips = True  # Settings: per-turn tips on or off
+        self._tip_expire = thresholds["tips"]["expire_s"]
+        self.prepare: list[str] = []  # tip lines to render now, so they play at once later
         self.reset()
 
     def reset(self) -> None:
@@ -97,6 +121,8 @@ class EventEngine:
         self._fuel_level = 0  # 0 ok, 1 warn, 2 critical
         self._hot_since: dict[str, float] = {}
         self._pit_said: set[str] = set()  # pit window calls go out once per race
+        if self.coach:
+            self.coach.reset()
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
         line = self._lines[kind]
@@ -127,6 +153,7 @@ class EventEngine:
             *self._tyres(snap, now),
             *self._best_lap(prev, snap, now),
             *self._pit_window(prev, snap, now),
+            *self._tips(snap, now),
         ]
         return [c for c in calls if c is not None]
 
@@ -205,6 +232,25 @@ class EventEngine:
             once("pit_window_missed")
         return calls
 
+    def _tips(self, snap: Snapshot, now: float) -> list[Call | None]:
+        if not self.coach:
+            return []
+        found, due = self.coach.update(snap)
+        for m in found:
+            # Worded now, a lap before it is said, so the voice has time to render it.
+            m.extra["text"] = self._pick(m.kind, self._lines[m.kind]["text"]).format(
+                turn=spoken_turn(m.turn), loss=spoken_loss(m.loss_s)
+            )
+            if self.tips:
+                self.prepare.append(m.extra["text"])
+        if not self.tips:
+            return []
+        return [self._tip_call(m, now, snap) for m in due]
+
+    def _tip_call(self, m: Mistake, now: float, snap: Snapshot) -> Call:
+        priority = int(self._lines[m.kind]["priority"])
+        return Call(m.kind, priority, m.extra["text"], now, snap.laps + 1, expire_s=self._tip_expire)
+
     def _best_lap(self, prev: Snapshot | None, snap: Snapshot, now: float) -> list[Call | None]:
         if prev is None or snap.laps < 2 or snap.best_ms is None or snap.laps == prev.laps:
             return []
@@ -229,7 +275,7 @@ class Radio:
             self._queue.append(call)
 
     def next(self, now: float) -> Call | None:
-        self._queue = [c for c in self._queue if now - c.at <= self.expire_s]
+        self._queue = [c for c in self._queue if now - c.at <= (c.expire_s or self.expire_s)]
         if not self._queue:
             return None
         call = min(self._queue, key=lambda c: (c.priority, c.at))

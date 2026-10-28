@@ -104,12 +104,15 @@ def create_app(
             reason = str(e)
             log.warning("telemetry source unavailable: %s", e)
     calls = settings.thresholds["calls"]
+    track_map = TrackMap(settings.thresholds, root=settings.tracks_dir)
+    engine = EventEngine(settings.thresholds, variants=None if settings.prefs.lite else variants, track_map=track_map)
+    engine.tips = settings.prefs.tips
     poller = Poller(
         source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
-        engine=EventEngine(settings.thresholds, variants=None if settings.prefs.lite else variants),
+        engine=engine,
         radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
         voice=voice,
-        track_map=TrackMap(settings.thresholds, root=settings.tracks_dir),
+        track_map=track_map,
     )
     poller.max_priority = CALL_PRIORITY[settings.prefs.calls]
 
@@ -164,6 +167,8 @@ def create_app(
         elif poller.voice:
             poller.voice.volume = new.volume
         poller.max_priority = CALL_PRIORITY[new.calls]
+        if poller.engine:
+            poller.engine.tips = new.tips
         if new.lite != old.lite:
             if poller.engine:
                 poller.engine.variants = {} if new.lite else variants

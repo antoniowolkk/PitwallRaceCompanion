@@ -2,8 +2,9 @@
 
 ACC gives the player car's world position and how far around the lap it is (0..1).
 One full lap fills BINS slots with x/y; that outline is saved per track, so later
-sessions have the map at once. Turns come from tracks.toml (official numbers) or, for a
-track not listed there, from the speed dips of that lap, numbered in order.
+sessions have the map at once. Turns come, best first, from tracks.toml (official
+numbers, checked by hand), from Lovely Track Data (every ACC track, downloaded with
+`pitwall tracks download`), or from the speed dips of that lap, numbered in order.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import math
 import re
 import time
 import tomllib
+import urllib.request
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +26,9 @@ from .models import Snapshot
 log = logging.getLogger(__name__)
 
 TURNS_FILE = Path(__file__).with_name("tracks.toml")
+# Lovely Track Data, (c) Lovely Sim Racing, CC BY-NC-SA 4.0: fetched to the user's PC, not shipped.
+LOVELY = "https://raw.githubusercontent.com/Lovely-Sim-Racing/lovely-track-data/main/data/"
+LOVELY_SIM = "assettocorsacompetizione"
 BINS = 500
 FILL = 0.97  # share of slots one lap must fill; small gaps are interpolated
 MIN_KMH = 20  # slower than this (grid, spins) says nothing about the line
@@ -44,6 +50,52 @@ def load_turns(path: Path = TURNS_FILE) -> dict[str, list[Turn]]:
     with path.open("rb") as f:
         data = tomllib.load(f)
     return {track: [Turn(**t) for t in turns] for track, turns in data.items()}
+
+
+def track_key(name: str) -> str:
+    """ACC's track name and Lovely's file name agree once case and - vs _ are ignored."""
+    return name.lower().replace("-", "_")
+
+
+def lovely_turns(data: dict[str, Any], half_m: float = 50.0) -> list[Turn]:
+    """Turns from a Lovely Track Data file, numbered in lap order. Back-to-back parts with
+    the same name (Monza's two Rettifilo turns) become one turn, "1-2". Some files give
+    only the apex ("marker"); those turns span half_m either side of it."""
+    half = half_m / float(data.get("length") or 5000)
+    parts = []
+    for t in data.get("turn", []):
+        if "start" in t and "end" in t:
+            parts.append((float(t["start"]), float(t["end"]), t.get("name", "")))
+        elif "marker" in t:
+            m = float(t["marker"])
+            parts.append((round((m - half) % 1, 4), round((m + half) % 1, 4), t.get("name", "")))
+    turns: list[Turn] = []
+    for n, (start, end, name) in enumerate(sorted(parts), 1):
+        last = turns[-1] if turns else None
+        if last and name and last.name == name:
+            turns[-1] = Turn(f"{last.number.split('-')[0]}-{n}", name, last.start, end)
+        else:
+            turns.append(Turn(str(n), name, start, end))
+    return turns
+
+
+def http_json(url: str) -> Any:
+    with urllib.request.urlopen(url, timeout=30) as res:
+        return json.loads(res.read())
+
+
+def download_lovely(root: Path, get: Callable[[str], Any] = http_json, report: Callable[[str], None] = print) -> int:
+    """Fetch every ACC track file into root/lovely; returns how many were saved."""
+    out = root / "lovely"
+    out.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for entry in get(LOVELY + "manifest.json")["tracks"][LOVELY_SIM]:
+        data = get(LOVELY + entry["path"])
+        # The file name, not trackId: the manifest has typos there ("murburgring").
+        (out / f"{track_key(Path(entry['path']).stem)}.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
+        report(f"{entry['trackName']}: {len(lovely_turns(data))} turns")
+        saved += 1
+    return saved
 
 
 def find_turns(speeds: list[float], drop_kmh: float, window: float, half_m: float, length_m: float) -> list[Turn]:
@@ -95,6 +147,7 @@ class TrackMap:
         self.track: str | None = None
         self.points: list[tuple[float, float]] | None = None
         self.turns: list[Turn] = []
+        self.source = "auto"  # official | lovely | auto: where the turns came from
         self.length_m = 0.0
         self._new_lap(None)
 
@@ -110,8 +163,12 @@ class TrackMap:
     def _set_track(self, track: str) -> None:
         self.track = track
         self.points = None
-        self.length_m = 0.0
-        self.turns = self.official.get(track, [])
+        # Lovely's length lets tips work before our own outline (and its length) is learned.
+        lovely, self.length_m = self._lovely(track)
+        if track in self.official:
+            self.turns, self.source = self.official[track], "official"
+        else:
+            self.turns, self.source = lovely, "lovely" if lovely else "auto"
         self._new_lap(None)
         path = self._path(track)
         if path and path.exists():
@@ -121,10 +178,21 @@ class TrackMap:
             except (OSError, ValueError, KeyError, TypeError):
                 log.warning("ignoring unreadable %s", path)
 
+    def _lovely(self, track: str) -> tuple[list[Turn], float]:
+        path = self.root / "lovely" / f"{track_key(track)}.json" if self.root else None
+        if not path or not path.exists():
+            return [], 0.0
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return lovely_turns(data), float(data.get("length") or 0)
+        except (OSError, ValueError, KeyError, TypeError):
+            log.warning("ignoring unreadable %s", path)
+            return [], 0.0
+
     def _finish(self, points: list[tuple[float, float]], speeds: list[float], save: bool = True) -> None:
         self.points = points
         self.length_m = _length(points)
-        if self.track not in self.official:
+        if self.source == "auto":
             self.turns = find_turns(speeds, self._drop, self._window, self._half_m, self.length_m)
         log.info("track map ready: %s, %.0f m, %d turns", self.track, self.length_m, len(self.turns))
         path = self._path(self.track or "")
@@ -176,5 +244,5 @@ class TrackMap:
             "points": self.points,
             "length_m": round(self.length_m),
             "turns": [t.to_wire() for t in self.turns],
-            "official": self.track in self.official,
+            "source": self.source,
         }

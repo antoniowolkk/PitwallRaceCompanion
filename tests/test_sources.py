@@ -80,7 +80,7 @@ def _wheels(fl, fr, rl, rr):
 def test_from_acc_maps_library_fields():
     physics = SimpleNamespace(
         speed_kmh=212.4, gear=4, rpm=7400, fuel=41.2, gas=0.8, brake=0.0, steer_angle=-0.1,
-        wheel_slip=_wheels(0.1, 0.1, 0.3, 0.2),
+        wheel_slip=_wheels(0.1, 0.1, 0.3, 0.2), abs=0.0, tc=0.4,
         tyre_core_temp=_wheels(84, 82, 79, 80), wheel_pressure=_wheels(26.4, 26.3, 26.1, 26.2),
     )
     graphics = SimpleNamespace(
@@ -111,7 +111,7 @@ def test_from_acc_maps_library_fields():
     assert (snap.pit_window_start, snap.pit_window_end, snap.missing_mandatory_pits) == (1_200_000, 2_400_000, 1)
     assert snap.to_wire()["session_time_left"] == 1_800_000
     assert (snap.lap_pos, snap.x, snap.y) == (0.25, -120.5, 88.25)  # our car, not car 0
-    assert snap.throttle == 0.8 and snap.wheel_slip == (0.1, 0.1, 0.3, 0.2)
+    assert snap.throttle == 0.8 and snap.wheel_slip == (0.1, 0.1, 0.3, 0.2) and snap.tc == 0.4
 
 
 def test_pause_holds_last_live_values():

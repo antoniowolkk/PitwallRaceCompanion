@@ -25,6 +25,7 @@ uv run pitwall --voice female --volume 0.8 # male (default, bm_george), female (
 uv run pitwall --engine piper             # fallback engine; run voices download --engine piper first
 uv run pitwall lines generate             # ACC closed: qwen3:4b writes line variants (~5 min incl. voice)
 uv run pitwall lines show                 # canned line (=) and AI variants (~) per call
+uv run pitwall tracks download            # turn names for all 25 ACC tracks (Lovely Track Data, ~100 KB)
 uv run pytest
 ```
 
@@ -36,7 +37,7 @@ uv run pytest
 - **Phase 2 settings** (`feat/phase2-settings`): Settings screen (voice, engine, volume, test voice, which calls, subtitles on/off and size), saved to `%LOCALAPPDATA%\PitWall\settings.json`, applied live. Merged as PR #5.
 - **Phase 2 pit window** (`feat/phase2-pit-window`): calls for window open, closing (2 min before), missed, and stop done. Confirmed live in a 20-minute race with a 10-minute window: open and stop-done calls came at the exact moments. Merged as PR #6.
 - **Phase 3 AI wording** (`feat/phase3-ai-wording`): AI-written line variants, made ahead of time with Ollama `qwen3:4b`, picked per call (never the same twice in a row); Lite mode = canned lines only; AI pill. 61 checked lines generated. Not yet heard in a race. Merged as PR #7.
-- **Track map** (`feat/track-map`): player position, lap fraction and inputs read from ACC; circuit outline learned from the first full lap and saved to `%LOCALAPPDATA%\PitWall\tracks\<track>.json`; official turns per track in `tracks.toml` (Spa done), else turns found from speed dips; Live screen shows the map, car dot, current turn and next turn with distance. Next: per-turn tips, then official turns for Monza and Nurburgring (needs a lap there).
+- **Track map** (`feat/track-map`): player position, lap fraction and inputs read from ACC; circuit outline learned from the first full lap and saved to `%LOCALAPPDATA%\PitWall\tracks\<track>.json`; official turns per track in `tracks.toml` (Spa done), else turns found from speed dips; Live screen shows the map, car dot, current turn and next turn with distance. Turns for every ACC track come from Lovely Track Data (`pitwall tracks download`, CC BY-NC-SA 4.0, downloaded to `tracks\lovely`, not committed); `tracks.toml` overrides with official numbers (Spa). Per-turn tips (`tips.py`): lockup, wheelspin, lap invalidated, or >= 0.5 s slower than the best pass through that turn; said ~5 s before the turn next lap, max one a lap, never inside a turn, not the same turn two laps running; Settings toggle. Checked on the Spa replay; not yet heard live.
 
 ## Phase 1 Windows checklist
 
@@ -70,6 +71,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - Phase 3 design (2026-10-28, user's choice): this PC is a GTX 1650 4 GB laptop (i5-9300H, 16 GB). With ACC open, 3.67 GB VRAM is used, so a live LLM would run on the CPU: ~3-5 s per call for qwen3:4b and CPU bursts mid-race. So the PRD's live rewording became pre-generation: `pitwall lines generate` (ACC closed, GPU free) asks Ollama for variants of every calls.toml line, filters them (`wording.check`), saves `%LOCALAPPDATA%\PitWall\lines.json` and pre-renders them with the voice. No AI runs during a race. qwen3:4b takes 3.5 GB with context, so ~66% GPU / 34% CPU; a run is ~2-3 min of AI plus ~3 min of Kokoro.
 - qwen3:4b line quality: the first run invented facts ("take the win"), gave bad advice ("slow down", "fix it quickly"), went robotic ("problem detected") and emitted U+FFFD. The prompt now asks for the relaxed tone and no new facts or advice; `wording.check` rejects digits, non-ASCII, dashes, colons, a sentence starting with a placeholder, pronouns and a banned-word list. `load()` re-checks saved lines, so tightening the filter needs no regeneration. Second run: 61 of 66 kept. Read `pitwall lines show` after every generate.
 - Track map (2026-10-28, Spa, Porsche 992 GT3 R, `recordings/spa_map.jsonl`): `normalized_car_position` is 0 at the start/finish line and is the same spline for every car, so turn positions in `tracks.toml` hold for any car. Player x/y = `car_coordinates[i]` x and z where `car_id[i] == player_car_id` (y is height). Plotted with SVG y = ACC z (no flip) the turns come out with the right hand (clockwise Spa, La Source a right). The outline from one 10 Hz lap measures 6.93 km (official 7.004). In the pit lane ACC still reports a lap fraction, so the map skips pit lane samples. ACC's `wheel_slip` is about 1 under normal hard braking and spikes to 3-5 on a lockup (front-right at Bruxelles on the out lap).
+- Lovely Track Data (github.com/Lovely-Sim-Racing/lovely-track-data): turn start/end are on the same 0..1 spline as ACC's `normalized_car_position` (Spa matched our measurements within ~0.005). Its manifest has typos in `trackId` ("murburgring", "indianpolis"), so files are saved by their path name; ACC's track name matches once lower-cased with `-` as `_`. Some files give only an apex `marker`; those turns get +-50 m. Turns are numbered in list order with same-name neighbours merged (Monza: 1-2 Rettifilo ... 11 Parabolica = official); Spa's list has extra parts (Kemmel, Stavelot), hence the tracks.toml override. `trackSplineLength` in the static map is not exposed by pyaccsharedmemory (and unused in ACC), so the track length comes from Lovely until the outline is learned.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
@@ -83,7 +85,9 @@ src/pitwall/
   config.py            Settings, thresholds loader
   models.py            Snapshot (player car), wire format, diff
   poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
-  track.py             track map: outline learned per track, official turns (tracks.toml) or found from speed dips
+  track.py             track map: outline learned per track; turns from tracks.toml, Lovely Track Data, or speed dips
+  tracks.toml          official turn numbers and positions (Spa), overrides Lovely
+  tips.py              per-turn mistakes (lockup, wheelspin, off, slow) and when to mention them
   events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
   calls.toml           canned radio lines and priorities
   wording.py           AI line variants: Ollama prompt, checks, lines.json, generate/show CLI
@@ -97,7 +101,7 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice; ai = ready, missing, lite), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change), `track` (track name, outline points or null while learning, turns with number/name/start/end, length_m, official; on connect and when the map changes).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice; ai = ready, missing, lite), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change), `track` (track name, outline points or null while learning, turns with number/name/start/end, length_m, source = official/lovely/auto; on connect and when the map changes).
 
 HTTP: `GET /api/status`, `GET /api/settings`, `PUT /api/settings` (partial JSON, 400 on a bad value), `POST /api/voice/test` (radio check, 409 when the voice is off).
 

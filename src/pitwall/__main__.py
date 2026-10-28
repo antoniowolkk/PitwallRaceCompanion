@@ -128,6 +128,14 @@ def _lines(args: argparse.Namespace) -> None:
     print(f"\nDone: {new} new voice lines cached.")
 
 
+def _tracks(args: argparse.Namespace) -> None:
+    from .track import download_lovely
+
+    root = data_dir() / "tracks"
+    print("Downloading turn names for every ACC track from Lovely Track Data (CC BY-NC-SA 4.0, lsr.gg) ...")
+    print(f"Saved {download_lovely(root)} tracks to {root / 'lovely'}")
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
@@ -159,6 +167,10 @@ def main(argv: list[str] | None = None) -> None:
     w.add_argument("--model", default="qwen3:4b")
     w.add_argument("--count", type=int, default=5, help="variants per call")
     w.set_defaults(func=_lines)
+
+    t = sub.add_parser("tracks", help="turn names for every ACC track")
+    t.add_argument("action", choices=["download"])
+    t.set_defaults(func=_tracks)
 
     args = p.parse_args(argv)
     args.func(args)

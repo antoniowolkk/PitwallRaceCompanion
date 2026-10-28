@@ -143,7 +143,10 @@
       text.turn = t;
       labels.append(text);
     }
-    $("map-state").textContent = track.official ? "● Official turn numbers" : "▲ Turns numbered from your lap";
+    $("map-state").textContent = {
+      official: "● Official turn numbers",
+      lovely: "● Turn names: Lovely Track Data (CC BY-NC-SA)",
+    }[track.source] || "▲ Turns numbered from your lap";
   }
 
   function renderTrack(t) {
@@ -392,6 +395,7 @@
       if (input) input.checked = true;
     }
     form.elements.subtitles.checked = s.subtitles;
+    form.elements.tips.checked = s.tips;
     if (document.activeElement !== $("volume")) $("volume").value = Math.round(s.volume * 100);
     $("volume-out").textContent = `${Math.round(s.volume * 100)}%`;
     form.querySelectorAll('input[name="subtitle_size"]').forEach((i) => (i.disabled = !s.subtitles));
@@ -434,6 +438,7 @@
     const t = e.target;
     if (t.name === "volume") save({ volume: Number(t.value) / 100 });
     else if (t.name === "subtitles") save({ subtitles: t.checked });
+    else if (t.name === "tips") save({ tips: t.checked });
     else if (t.name === "lite") save({ lite: t.value === "true" });
     else if (t.type === "radio") save({ [t.name]: t.value });
   });

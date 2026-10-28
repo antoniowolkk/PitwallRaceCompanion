@@ -103,6 +103,11 @@ class Poller:
         if self._engine:
             now = self._clock()
             calls = self._engine.update(snap, now)  # always run, so cooldowns stay right
+            if self._engine.prepare:
+                if self._voice and self._voice.active:
+                    for text in self._engine.prepare:
+                        self._voice.prepare(text)
+                self._engine.prepare.clear()
             self._radio.push([c for c in calls if c.priority <= self.max_priority])
             call = self._radio.next(now)
             if call:
@@ -116,6 +121,7 @@ class Poller:
                         call.text,
                         on_start=lambda: asyncio.run_coroutine_threadsafe(self._send_radio(msg), loop),
                         priority=call.priority,
+                        max_wait=call.expire_s,
                     )
                 else:
                     await self._send_radio(msg)

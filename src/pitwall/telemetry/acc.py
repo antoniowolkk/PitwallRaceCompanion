@@ -97,6 +97,8 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         brake=float(physics.brake),
         steer=float(physics.steer_angle),
         wheel_slip=_wheels(physics.wheel_slip),
+        abs=float(physics.abs),
+        tc=float(physics.tc),
     )
 
 

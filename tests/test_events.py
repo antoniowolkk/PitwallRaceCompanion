@@ -22,7 +22,7 @@ def kinds(calls: list[Call]) -> list[str]:
 
 
 def test_every_call_line_formats():
-    fields = dict(laps="three", tyre="front left", temp="ninety seven", psi="twenty seven point nine", time="one fifty one point zero", minutes="two minutes")
+    fields = dict(laps="three", tyre="front left", temp="ninety seven", psi="twenty seven point nine", time="one fifty one point zero", minutes="two minutes", turn="La Source", loss="three tenths")
     for kind, line in load_calls().items():
         assert line["priority"] in (1, 2, 3), kind
         text = line["text"].format(**fields)
