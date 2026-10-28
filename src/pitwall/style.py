@@ -52,6 +52,72 @@ def context(passes: list[dict[str, Any]], track: str, car: str) -> dict[str, Any
     }
 
 
+def clean(lap: dict[str, Any]) -> bool:
+    """A lap that says something about pace (the PRD's "clean lap"): valid, no pit, not joined halfway.
+    Small lockups are allowed; they are what the coach is there to talk about."""
+    return lap["valid"] and not lap["pit"] and not lap["partial"]
+
+
+def tidy(lap: dict[str, Any]) -> bool:
+    """A clean lap without a single lockup, wheelspin or cut: worth a word of praise."""
+    return clean(lap) and not (lap["lockups"] or lap["wheelspin"] or lap["cuts"])
+
+
+def extra_corrections(passes: list[dict[str, Any]]) -> dict[int, float]:
+    """Per position in `passes`: steering reversals beyond the fewest seen in that turn
+    (every corner needs some; a chicane more than a kink)."""
+    fewest: dict[Any, int] = {}
+    for p in passes:
+        fewest[p["index"]] = min(fewest.get(p["index"], 99), p.get("corrections", 0))
+    return {i: p.get("corrections", 0) - fewest[p["index"]] for i, p in enumerate(passes)}
+
+
+def summary(passes: list[dict[str, Any]], laps: list[dict[str, Any]], c: dict[str, Any]) -> dict[str, Any]:
+    """The driving style of a session in a few plain traits, each good or worth a look.
+    Shown on the Coach screen and saved with the session for the setup advisor (phase 5)."""
+    traits: list[dict[str, str]] = []
+    if len(passes) < c["summary_passes"]:
+        return {"traits": [], "text": "Not enough driving yet for a summary."}
+
+    def trait(key: str, good: bool, good_label: str, watch_label: str, detail: str) -> None:
+        traits.append({"key": key, "level": "good" if good else "watch",
+                       "label": good_label if good else watch_label, "detail": detail})
+
+    braking = [p for p in passes if p.get("brake_m") is not None]
+    if braking:
+        rate = sum(p["lockup"] for p in braking) / len(braking)
+        trait("braking", rate < c["lockup_rate"], "Clean on the brakes", "Locks the fronts",
+              f"lockups in {rate:.0%} of braking zones")
+    rate = sum(p["wheelspin"] for p in passes) / len(passes)
+    trait("throttle", rate < c["wheelspin_rate"], "Smooth on the throttle", "Rear steps out on exit",
+          f"wheelspin in {rate:.0%} of turns")
+    dry = [p for p in passes if not p.get("wet_tyres")]
+    if len(dry) >= c["summary_passes"]:
+        extra = statistics.mean(extra_corrections(dry).values())
+        trait("steering", extra < c["steer_extra"], "Smooth steering", "Busy hands mid-corner",
+              f"{extra:.1f} extra steering corrections a turn")
+    coast = statistics.mean(p["coast_s"] for p in passes)
+    trait("coasting", coast < c["coast_avg_s"], "Commits from brake to throttle", "Coasts into corners",
+          f"{coast:.1f} s coasting a turn")
+    cuts = sum(not p["valid"] for p in passes)
+    trait("limits", cuts < c["cuts"], "Inside track limits", "Track limits", f"{cuts} turns where the lap went invalid")
+    times = [l["time_s"] for l in laps if clean(l) and l["time_s"]]
+    if len(times) >= 3:
+        spread = statistics.pstdev(times)
+        trait("consistency", spread < c["spread_s"], "Consistent lap times", "Lap times vary",
+              f"clean laps within {spread:.2f} s of each other (spread)")
+    hot = [l["front_c"] - l["rear_c"] for l in laps if l["front_c"] and l["rear_c"]]
+    if hot:
+        gap = statistics.mean(hot)
+        trait("tyres", gap < c["front_hot_c"], "Tyres balanced", "Works the fronts hard",
+              f"fronts {abs(gap):.0f} °C {'hotter' if gap > 0 else 'cooler'} than the rears")
+    watch = [t["label"].lower() for t in traits if t["level"] == "watch"]
+    good = [t["label"].lower() for t in traits if t["level"] == "good"]
+    text = (f"Worth a look: {', '.join(watch)}. " if watch else "Nothing stands out. ") + \
+           (f"Good: {', '.join(good)}." if good else "")
+    return {"traits": traits, "text": text[0].upper() + text[1:]}
+
+
 def _median(values: list[float]) -> float:
     return statistics.median(values) if values else 0.0
 
@@ -123,16 +189,25 @@ def sessions_dir(root: Path) -> Path:
     return root / "sessions"
 
 
-def save_session(root: Path, passes: list[dict[str, Any]], track: str, car: str, c: dict[str, Any]) -> dict[str, Any] | None:
+def save_session(
+    root: Path, passes: list[dict[str, Any]], track: str, car: str, c: dict[str, Any], laps: list[dict[str, Any]] | None = None
+) -> dict[str, Any] | None:
     """Save a finished session; returns its summary, or None when it had nothing to learn from.
     Habits come only from the session types in learn_from: in a race, traffic makes the
     driver brake early or lift, which is not a habit. Other sessions are kept, without habits."""
-    if not passes:
+    laps = laps or []
+    if not passes and not laps:
         return None
-    ctx = context(passes, track, car)
+    ctx = context(passes or [{"lap": 0, "session": laps[0].get("session")}], track, car)
+    if laps:
+        ctx["laps"] = len(laps)
     found = patterns(passes, c) if ctx["session"] in c["learn_from"] else []
     sid = f"{time.strftime('%Y%m%d-%H%M%S')}_{re.sub(r'[^\w-]', '_', track)}_{ctx['session']}"
-    data = {"id": sid, **ctx, "patterns": found, "passes": passes, "tips": None, "dismissed": False}
+    times = [l["time_s"] for l in laps if clean(l) and l["time_s"]]
+    data = {"id": sid, **ctx, "patterns": found, "passes": passes, "lap_records": laps,
+            "best_s": min(times) if times else None, "clean_laps": len(times),
+            "style": summary(passes, laps, c) if passes else {"traits": [], "text": ""},
+            "tips": None, "dismissed": False}
     path = sessions_dir(root) / f"{sid}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -165,6 +240,25 @@ def latest_offer(root: Path) -> dict[str, Any] | None:
         if data.get("patterns") and not data.get("tips") and not data.get("dismissed"):
             return data
     return None
+
+
+def list_sessions(root: Path, limit: int = 20) -> list[dict[str, Any]]:
+    """Newest first, without the raw passes: what the Coach screen lists."""
+    out = []
+    for path in sorted(sessions_dir(root).glob("*.json"), reverse=True)[:limit]:
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        out.append({
+            "id": d["id"], "track": d["track"], "car": d["car"], "session": d["session"],
+            "condition": d.get("condition"), "laps": d.get("laps"),
+            "best_s": d.get("best_s"), "clean_laps": d.get("clean_laps"),
+            "style": d.get("style") or {"traits": [], "text": ""},
+            "habits": sum(len(t["patterns"]) for t in d.get("patterns") or []),
+            "tips_written": bool(d.get("tips")),
+        })
+    return out
 
 
 def offer(data: dict[str, Any] | None) -> dict[str, Any] | None:

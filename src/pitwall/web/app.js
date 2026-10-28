@@ -221,6 +221,106 @@
   $("coach-yes").addEventListener("click", () => coachPost("/api/coach/generate"));
   $("coach-no").addEventListener("click", () => coachPost("/api/coach/dismiss"));
 
+  // Coach screen: the session so far (coach_view at every lap end and tip) and past sessions.
+  const secs = (s) => (s == null ? "—" : fmtLap(Math.round(s * 1000)));
+  const cell = (row, text, cls) => {
+    const td = document.createElement("td");
+    td.textContent = text;
+    if (cls) td.className = cls;
+    row.append(td);
+  };
+  const count = (n) => (n ? `▲ ${n}` : "–");
+
+  function traitList(list, traits) {
+    list.replaceChildren();
+    for (const t of traits) {
+      const li = document.createElement("li");
+      li.dataset.level = t.level;
+      const b = document.createElement("b");
+      b.textContent = `${t.level === "good" ? "●" : "▲"} ${t.label}`;
+      li.append(b, ` ${t.detail}`);
+      list.append(li);
+    }
+  }
+
+  function renderCoachView(v) {
+    $("co-where").textContent = [v.track, v.car, v.session].filter(Boolean).join(" · ").replaceAll("_", " ");
+    const clean = v.laps.filter((l) => l.clean).length;
+    $("co-laps").textContent = v.laps.length || "—";
+    $("co-clean").textContent = v.laps.length ? `${clean} clean` : "";
+    $("co-best").textContent = secs(v.best_s);
+    $("co-spread").textContent = v.spread_s == null ? "—" : `${v.spread_s.toFixed(2)} s`;
+    $("co-style").textContent = v.style.text || "Drive a few laps: the style summary builds as you go.";
+    traitList($("co-traits"), v.style.traits);
+
+    const tips = $("co-tip-list");
+    if (v.tips.length) {
+      tips.replaceChildren(...[...v.tips].reverse().map((t) => {
+        const li = document.createElement("li");
+        const lap = document.createElement("span");
+        lap.className = "lap";
+        lap.textContent = `L${t.lap}`;
+        li.append(lap, ` ${t.text}`);
+        return li;
+      }));
+    }
+
+    const laps = $("co-lap-table").tBodies[0];
+    if (v.laps.length) {
+      laps.replaceChildren(...v.laps.map((l) => {
+        const tr = document.createElement("tr");
+        cell(tr, l.lap + 1);
+        cell(tr, secs(l.time_s), "num");
+        cell(tr, l.tidy ? "● Tidy" : l.clean ? "○ Clean" : l.pit ? "– Pit" : l.partial ? "– Joined" : "✕ Invalid",
+             l.tidy ? "good" : l.clean || l.pit || l.partial ? "" : "bad");
+        cell(tr, count(l.lockups), l.lockups ? "warn" : "");
+        cell(tr, count(l.wheelspin), l.wheelspin ? "warn" : "");
+        cell(tr, count(l.cuts), l.cuts ? "warn" : "");
+        cell(tr, `${Math.round(l.front_c)} / ${Math.round(l.rear_c)}`, "num");
+        return tr;
+      }));
+    }
+
+    const turns = $("co-turn-table").tBodies[0];
+    if (v.turns.length) {
+      turns.replaceChildren(...v.turns.map((t) => {
+        const tr = document.createElement("tr");
+        cell(tr, `T${t.turn}${t.name ? ` ${t.name}` : ""}`);
+        cell(tr, t.passes, "num");
+        cell(tr, t.best_s == null ? "—" : `${t.best_s.toFixed(2)} s`, "num");
+        cell(tr, count(t.lockups), t.lockups ? "warn" : "");
+        cell(tr, count(t.wheelspin), t.wheelspin ? "warn" : "");
+        cell(tr, count(t.cuts), t.cuts ? "warn" : "");
+        return tr;
+      }));
+    }
+  }
+
+  async function loadSessions() {
+    try {
+      const list = await (await fetch("/api/sessions")).json();
+      const ol = $("co-past");
+      if (!list.length) return;
+      ol.replaceChildren(...list.map((s) => {
+        const li = document.createElement("li");
+        const head = document.createElement("b");
+        const when = s.id.slice(0, 13).replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/, "$1-$2-$3 $4:$5");
+        head.textContent = `${when} · ${s.track.replaceAll("_", " ")} · ${s.session} · ${s.laps} laps · best ${secs(s.best_s)}`;
+        const p = document.createElement("p");
+        p.textContent = s.style.text || "";
+        const tips = document.createElement("p");
+        tips.className = "sub";
+        tips.textContent = s.habits
+          ? `${s.habits} habits found · ${s.tips_written ? "● personal tips written" : "○ no personal tips yet"}`
+          : s.session === "qualify" ? "No habits found" : "Not used for personal tips (only qualifying is)";
+        li.append(head, p, tips);
+        return li;
+      }));
+    } catch (err) {
+      $("co-past").innerHTML = '<li class="empty">✕ Could not load past sessions.</li>';
+    }
+  }
+
   // Back to the "no data" look, so old numbers never sit under a Waiting banner.
   function clear() {
     for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
@@ -395,6 +495,9 @@
       case "coach":
         renderCoach(msg);
         return;
+      case "coach_view":
+        renderCoachView(msg);
+        return;
     }
     schedule();
   }
@@ -406,6 +509,7 @@
     ws.onopen = () => {
       retry = 500;
       setPill("st-core", "good", "●", "Online");
+      if (!$("coaching").hidden) loadSessions();
     };
     ws.onmessage = (e) => handle(JSON.parse(e.data));
     ws.onclose = () => {
@@ -415,10 +519,12 @@
     };
   }
 
-  // Screens: #live (default) and #settings.
+  // Screens: #live (default), #coach and #settings.
+  const SCREENS = { live: "live", coach: "coaching", settings: "settings" };
   function route() {
-    const screen = location.hash === "#settings" ? "settings" : "live";
-    for (const id of ["live", "settings"]) $(id).hidden = id !== screen;
+    const screen = SCREENS[location.hash.slice(1)] ? location.hash.slice(1) : "live";
+    for (const [name, id] of Object.entries(SCREENS)) $(id).hidden = name !== screen;
+    if (screen === "coach") loadSessions();
     document.querySelectorAll(".tabs a.tab").forEach((a) => {
       const on = a.getAttribute("href") === `#${screen}`;
       a.classList.toggle("active", on);
@@ -453,6 +559,7 @@
     }
     form.elements.subtitles.checked = s.subtitles;
     form.elements.tips.checked = s.tips;
+    form.elements.coach.checked = s.coach;
     if (document.activeElement !== $("volume")) $("volume").value = Math.round(s.volume * 100);
     $("volume-out").textContent = `${Math.round(s.volume * 100)}%`;
     form.querySelectorAll('input[name="subtitle_size"]').forEach((i) => (i.disabled = !s.subtitles));
@@ -496,6 +603,7 @@
     if (t.name === "volume") save({ volume: Number(t.value) / 100 });
     else if (t.name === "subtitles") save({ subtitles: t.checked });
     else if (t.name === "tips") save({ tips: t.checked });
+    else if (t.name === "coach") save({ coach: t.checked });
     else if (t.name === "lite") save({ lite: t.value === "true" });
     else if (t.type === "radio") save({ [t.name]: t.value });
   });

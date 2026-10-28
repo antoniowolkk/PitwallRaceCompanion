@@ -110,7 +110,9 @@ class TipsDesk:
     async def session_end(self, ended: dict[str, Any]) -> None:
         if not self.root:
             return
-        data = await asyncio.to_thread(style.save_session, self.root, ended["passes"], ended["track"], ended["car"], self._style)
+        data = await asyncio.to_thread(
+            style.save_session, self.root, ended["passes"], ended["track"], ended["car"], self._style, ended.get("laps")
+        )
         if data and data["patterns"]:
             self.offer, self.error, self.done = style.offer(data), "", ""
             await self._send()
@@ -199,6 +201,7 @@ def create_app(
         personal_root=settings.coach_dir,
     )
     engine.tips = settings.prefs.tips
+    engine.coach_on = settings.prefs.coach
     poller = Poller(
         source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
         engine=engine,
@@ -250,6 +253,10 @@ def create_app(
         asyncio.create_task(desk.generate(sid))
         return {"started": sid}
 
+    @app.get("/api/sessions")
+    async def sessions() -> list[dict[str, Any]]:
+        return await asyncio.to_thread(style.list_sessions, desk.root) if desk.root else []
+
     @app.post("/api/coach/dismiss")
     async def coach_dismiss(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         await desk.dismiss(str(body.get("session", "")))
@@ -283,6 +290,7 @@ def create_app(
         poller.max_priority = CALL_PRIORITY[new.calls]
         if poller.engine:
             poller.engine.tips = new.tips
+            poller.engine.coach_on = new.coach
         if new.lite != old.lite:
             if poller.engine:
                 poller.engine.variants = {} if new.lite else variants
@@ -315,6 +323,8 @@ def create_app(
         await websocket.send_json({"type": "radio_log", "calls": list(poller.radio_log)})
         await websocket.send_json(settings_message(settings.prefs, variants))
         await websocket.send_json(desk.message())
+        if poller.engine and poller.engine.stint:
+            await websocket.send_json(poller.engine.stint.view())
         hub.clients.add(websocket)
         try:
             while True:

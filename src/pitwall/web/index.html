@@ -12,7 +12,7 @@
     <div class="brand"><span class="mark" aria-hidden="true"></span>Pit Wall</div>
     <nav class="tabs" aria-label="Screens">
       <a class="tab active" aria-current="page" href="#live"><span>Live</span></a>
-      <span class="tab" aria-disabled="true" title="Phase 4"><span>Coach</span></span>
+      <a class="tab" href="#coach"><span>Coach</span></a>
       <span class="tab" aria-disabled="true" title="Phase 5"><span>Setup</span></span>
       <a class="tab" href="#settings"><span>Settings</span></a>
     </nav>
@@ -114,6 +114,45 @@
     </section>
   </main>
 
+  <main id="coaching" hidden>
+    <section class="hud" aria-labelledby="co-session">
+      <h2 id="co-session">This session <span class="hint" id="co-where"></span></h2>
+      <div class="co-numbers">
+        <div><span class="lbl">Laps</span><b id="co-laps">—</b><span class="sub" id="co-clean"></span></div>
+        <div><span class="lbl">Best clean</span><b id="co-best">—</b></div>
+        <div><span class="lbl">Spread</span><b id="co-spread">—</b><span class="sub">last 5 clean laps</span></div>
+      </div>
+      <p class="co-text" id="co-style">Drive a few laps: the style summary builds as you go.</p>
+      <ul class="traits" id="co-traits"></ul>
+    </section>
+
+    <section class="hud" aria-labelledby="co-tips">
+      <h2 id="co-tips">Coach tips</h2>
+      <ol class="co-list" id="co-tip-list"><li class="empty">No tips yet. The coach speaks after 3 clean laps in a stint, at most twice a stint.</li></ol>
+    </section>
+
+    <section class="hud" aria-labelledby="co-laps-h">
+      <h2 id="co-laps-h">Laps</h2>
+      <div class="scroll"><table class="co-table" id="co-lap-table">
+        <thead><tr><th>Lap</th><th>Time</th><th>Status</th><th>Lockups</th><th>Wheelspin</th><th>Cuts</th><th>Tyres F / R °C</th></tr></thead>
+        <tbody><tr><td colspan="7" class="empty">No laps yet.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="hud" aria-labelledby="co-turns-h">
+      <h2 id="co-turns-h">Turn by turn</h2>
+      <div class="scroll"><table class="co-table" id="co-turn-table">
+        <thead><tr><th>Turn</th><th>Passes</th><th>Best</th><th>Lockups</th><th>Wheelspin</th><th>Cuts</th></tr></thead>
+        <tbody><tr><td colspan="6" class="empty">No turns yet.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="hud" aria-labelledby="co-past-h">
+      <h2 id="co-past-h">Past sessions</h2>
+      <ol class="co-list" id="co-past"><li class="empty">No saved sessions yet.</li></ol>
+    </section>
+  </main>
+
   <main id="settings" hidden>
     <form class="settings" id="settings-form" autocomplete="off">
       <section class="hud" aria-labelledby="set-voice">
@@ -147,6 +186,7 @@
           <label><input type="radio" name="calls" value="urgent"><span><b>Urgent only</b> Yellow, black, penalty, fuel critical</span></label>
         </fieldset>
         <label class="toggle"><input type="checkbox" name="tips"><span>Turn tips: a word before a turn that went wrong last lap</span></label>
+        <label class="toggle"><input type="checkbox" name="coach"><span>Coach: a driving tip after a lap, once or twice a stint</span></label>
       </section>
 
       <section class="hud" aria-labelledby="set-wording">

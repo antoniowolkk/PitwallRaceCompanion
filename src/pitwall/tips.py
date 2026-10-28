@@ -9,8 +9,9 @@ seconds before the turn, the engineer mentions it: never while in a turn, never 
 same turn two laps running, at most one a lap in practice and qualifying, and in a
 race only lockups and cuts, every few laps at most.
 
-Every pass is also kept in `passes`, so after the session `style.py` can look for
-patterns and the local AI can write personal tips from them (only when asked).
+Every pass is also kept in `passes`, and every lap in `laps`, so the stint coach
+(coach.py) can judge the driving over a stint and, after the session, `style.py` can
+look for patterns and the local AI can write personal tips from them (only when asked).
 """
 
 from __future__ import annotations
@@ -40,6 +41,10 @@ class Pass:
     full_at: float | None = None  # lap fraction where full throttle came back after the slowest point
     coast_ms: int = 0  # neither pedal, on the way in and through the turn
     abs_ms: int = 0
+    tc_ms: int = 0
+    corrections: int = 0  # steering reversals inside the turn (a clean corner has about one: in, then unwind)
+    steer_ext: float | None = None  # furthest steering in the current direction
+    steer_dir: int = 0
 
 
 @dataclass
@@ -83,6 +88,7 @@ class TurnCoach:
         self._lead_s, self._min_lead_m, self._min_gap_m = c["lead_s"], c["min_lead_m"], c["min_gap_m"]
         self._lock_slip, self._spin_slip = c["lock_slip"], c["spin_slip"]
         self._spin_throttle, self._samples = c["spin_throttle"], c["slip_samples"]
+        self._swing = c["steer_swing"]
         self._loss_s, self._per_lap = c["loss_s"], c["max_per_lap"]
         self._race_kinds, self._race_gap = set(c["race_kinds"]), c["race_gap_laps"]
         self.differs = thresholds["style"]  # how big a difference to the best pass counts
@@ -92,9 +98,9 @@ class TurnCoach:
 
     def finish(self) -> None:
         """The session is over: hand its passes on (see `finished`)."""
-        if self.passes:
-            self.finished.append({"passes": self.passes, "track": self._track or "", "car": self._car})
-        self.passes = []
+        if self.passes or self.laps:
+            self.finished.append({"passes": self.passes, "laps": self.laps, "track": self._track or "", "car": self._car})
+        self.passes, self.laps = [], []
 
     def reset(self) -> None:
         self._track: str | None = None
@@ -108,6 +114,10 @@ class TurnCoach:
         self._last_tip_lap = -99
         self._prev: Snapshot | None = None
         self.passes = []  # every finished pass this session
+        self.laps: list[dict[str, Any]] = []  # every finished lap this session
+        self._lap_no: int | None = None
+        self._lap: dict[str, Any] = {}
+        self.stint = 0
 
     def update(self, snap: Snapshot) -> tuple[list[Mistake], list[Mistake]]:
         """Feed one snapshot; returns (mistakes just found, tips to say now)."""
@@ -118,11 +128,44 @@ class TurnCoach:
             self.reset()
             self._track, self._session, self._car, self._prev = snap.track, snap.session, snap.car, snap
             return [], []
+        if snap.status == "live":
+            self._count_lap(prev, snap)
         if not turns or not length or snap.status != "live" or snap.in_pit_lane or snap.current_ms is None:
             self._active.clear()  # a pass through the pit lane says nothing
             return [], []
         found = self._watch(prev, snap, turns, length)
         return found, self._tip(snap, turns, length)
+
+    def _count_lap(self, prev: Snapshot | None, snap: Snapshot) -> None:
+        """Laps and stints: a stint starts when the car leaves the pit lane."""
+        if prev is not None and prev.in_pit_lane and not snap.in_pit_lane:
+            self.stint += 1
+        if snap.laps != self._lap_no:
+            if self._lap_no is not None and prev is not None and self._lap:
+                self._finish_lap(prev, snap)
+            # A lap we joined halfway (Pit Wall started mid-lap) is never a clean lap.
+            self._lap = {"front": 0.0, "rear": 0.0, "n": 0, "pit": snap.in_pit_lane, "partial": self._lap_no is None}
+            self._lap_no = snap.laps
+        lap = self._lap
+        lap["pit"] = lap["pit"] or snap.in_pit_lane
+        if snap.speed_kmh > 60:
+            lap["front"] += (snap.tyre_temp_c[0] + snap.tyre_temp_c[1]) / 2
+            lap["rear"] += (snap.tyre_temp_c[2] + snap.tyre_temp_c[3]) / 2
+            lap["n"] += 1
+
+    def _finish_lap(self, prev: Snapshot, snap: Snapshot) -> None:
+        lap, n = self._lap, max(1, self._lap["n"])
+        number = self._lap_no or 0
+        mine = [p for p in self.passes if p["lap"] == number]
+        self.laps.append({
+            "lap": number, "stint": self.stint,
+            "time_s": round(snap.last_ms / 1000, 3) if snap.last_ms else None,
+            "valid": prev.lap_valid, "pit": lap["pit"], "partial": lap["partial"],
+            "lockups": sum(p["lockup"] for p in mine), "wheelspin": sum(p["wheelspin"] for p in mine),
+            "cuts": sum(not p["valid"] for p in mine),
+            "front_c": round(lap["front"] / n, 1), "rear_c": round(lap["rear"] / n, 1),
+            "wet": prev.wet_tyres, "session": prev.session,
+        })
 
     def _watch(self, prev: Snapshot | None, snap: Snapshot, turns: list[Turn], length: float) -> list[Mistake]:
         pre, post = self._pre_m / length, self._post_m / length
@@ -171,10 +214,27 @@ class TurnCoach:
             p.coast_ms += dt
         if snap.abs > 0:
             p.abs_ms += dt
+        if snap.tc > 0:
+            p.tc_ms += dt
+        if _inside(pos, turn.start, turn.end):
+            self._steer(p, snap.steer)
         if snap.throttle >= self._spin_throttle and rear >= self._spin_slip:
             p.spin += 1
         if prev is not None and prev.lap_valid and not snap.lap_valid and snap.laps == prev.laps:
             p.invalid = True
+
+    def _steer(self, p: Pass, s: float) -> None:
+        """Count reversals of the steering by at least steer_swing (hysteresis, so noise is not one)."""
+        if p.steer_ext is None:
+            p.steer_ext = s
+        elif p.steer_dir == 0:
+            if abs(s - p.steer_ext) >= self._swing:
+                p.steer_dir, p.steer_ext = (1 if s > p.steer_ext else -1), s
+        elif (s - p.steer_ext) * p.steer_dir > 0:
+            p.steer_ext = s
+        elif abs(s - p.steer_ext) >= self._swing:
+            p.corrections += 1
+            p.steer_dir, p.steer_ext = -p.steer_dir, s
 
     def _record(self, i: int, turn: Turn, p: Pass, snap: Snapshot, length: float) -> dict[str, Any]:
         """One pass as plain numbers: metres are + before the turn (braking) or after it (throttle)."""
@@ -189,6 +249,9 @@ class TurnCoach:
             "full_m": round(_signed(p.full_at - turn.end) * length) if p.full_at is not None else None,
             "coast_s": round(p.coast_ms / 1000, 1),
             "abs_s": round(p.abs_ms / 1000, 1),
+            "tc_s": round(p.tc_ms / 1000, 1),
+            "corrections": p.corrections,
+            "stint": self.stint,
             # What the car and track were like, for the AI that writes the personal tips.
             "session": snap.session, "brake_bias": round(snap.brake_bias, 3), "abs_level": snap.abs_level,
             "tc_level": snap.tc_level, "engine_map": snap.engine_map, "grip": snap.grip, "rain": snap.rain,

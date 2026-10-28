@@ -113,6 +113,10 @@ class Poller:
                 self._engine.prepare.clear()
             self._radio.push([c for c in calls if c.priority <= self.max_priority])
             await self._sessions_ended()
+            stint = self._engine.stint
+            if stint and stint.dirty:
+                stint.dirty = False
+                await self._broadcast(stint.view())
             call = self._radio.next(now)
             if call:
                 log.info("radio: %s", call.text)

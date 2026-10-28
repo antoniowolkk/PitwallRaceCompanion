@@ -48,6 +48,7 @@ class Prefs:
     subtitle_size: str = "normal"
     lite: bool = False  # Lite mode: canned lines only, no AI-written variants
     tips: bool = True  # per-turn tips before a turn where the last lap went wrong
+    coach: bool = True  # stint coach: a driving tip after a lap, one or two a stint
 
     def updated(self, changes: dict[str, Any]) -> Prefs:
         """A copy with changes applied; raises ValueError on unknown keys or bad values."""
@@ -62,7 +63,7 @@ class Prefs:
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
                     raise ValueError("volume must be between 0 and 1")
                 value = float(value)
-            if key in ("subtitles", "lite", "tips") and not isinstance(value, bool):
+            if key in ("subtitles", "lite", "tips", "coach") and not isinstance(value, bool):
                 raise ValueError(f"{key} must be true or false")
             data[key] = value
         return Prefs(**data)

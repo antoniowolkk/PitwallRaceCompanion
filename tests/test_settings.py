@@ -76,8 +76,8 @@ def test_settings_api_applies_live_saves_and_broadcasts(tmp_path):
         first = voices.voices[0]
         wait_for(lambda: first.status == "ready")
         with client.websocket_connect("/ws") as ws:
-            msgs = [ws.receive_json() for _ in range(5)]
-            assert msgs[-2]["type"] == "settings" and msgs[-1]["type"] == "coach" and msgs[-2]["voice"] == "male"
+            msgs = [ws.receive_json() for _ in range(6)]
+            assert [m["type"] for m in msgs[-3:]] == ["settings", "coach", "coach_view"] and msgs[-3]["voice"] == "male"
 
             r = client.put("/api/settings", json={"volume": 0.5, "calls": "urgent", "subtitles": False})
             assert r.status_code == 200 and r.json()["volume"] == 0.5
