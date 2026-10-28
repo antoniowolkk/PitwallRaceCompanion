@@ -235,6 +235,23 @@ class Voice:
             self._synth(text, path)
         return path
 
+    def render_all(self, lines: list[str], report: Callable[[int, int], None] = lambda done, total: None) -> int:
+        """Render lines into the cache now, in this thread (for `pitwall lines generate`).
+        Returns how many were new. Do not mix with start()."""
+        if self.status != "loading":
+            return 0
+        if self._synth is None:
+            self._synth = self._load(self._root, self.voice_id, 1.0)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        new = 0
+        for i, text in enumerate(lines, 1):
+            key = hashlib.sha1(f"{STYLE}|{text}".encode()).hexdigest()[:16]
+            if not (self.cache_dir / f"{key}.wav").exists():
+                self._wav(text)
+                new += 1
+            report(i, len(lines))
+        return new
+
     def _at_volume(self, wav: Path) -> Path:
         volume = self.volume  # read once: the Settings screen can change it any time
         if volume >= 0.999:

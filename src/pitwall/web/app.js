@@ -47,7 +47,12 @@
     }[s.acc];
     const label = s.source && s.source !== "acc" ? `${acc[2]} (${s.source})` : acc[2];
     setPill("st-acc", acc[0], acc[1], label);
-    setPill("st-ai", "idle", "–", s.ai === "off" ? "Off" : s.ai);
+    const ai = {
+      ready: ["good", "●", "Lines ready"],
+      missing: ["warn", "▲", "Not generated"],
+      lite: ["idle", "–", "Lite"],
+    }[s.ai] || ["idle", "–", "Off"];
+    setPill("st-ai", ...ai);
     const voice = {
       ready: ["good", "●", "On"],
       loading: ["idle", "○", "Loading"],
@@ -291,6 +296,10 @@
 
   function applySettings(s) {
     settings = s;
+    form.querySelector(`input[name="lite"][value="${s.lite}"]`).checked = true;
+    $("ai-count").textContent = s.ai_lines ? `${s.ai_lines} AI-written lines` : "none yet";
+    const noLines = $("ai-missing");
+    noLines.hidden = s.lite || s.ai_lines > 0;
     for (const name of ["voice", "engine", "calls", "subtitle_size"]) {
       const input = form.querySelector(`input[name="${name}"][value="${s[name]}"]`);
       if (input) input.checked = true;
@@ -338,6 +347,7 @@
     const t = e.target;
     if (t.name === "volume") save({ volume: Number(t.value) / 100 });
     else if (t.name === "subtitles") save({ subtitles: t.checked });
+    else if (t.name === "lite") save({ lite: t.value === "true" });
     else if (t.type === "radio") save({ [t.name]: t.value });
   });
   $("volume").addEventListener("input", (e) => {

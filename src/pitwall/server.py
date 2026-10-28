@@ -16,6 +16,7 @@ from .events import EventEngine, Radio, load_calls, words
 from .poller import Poller
 from .telemetry import SourceUnavailable, TelemetrySource, make_source
 from .voice import VOICES, Voice, model_files
+from . import wording
 
 RADIO_CHECK = "Radio check. Reading you loud and clear."
 
@@ -49,30 +50,34 @@ def client_config(settings: Settings) -> dict[str, Any]:
     }
 
 
-def warm_lines(settings: Settings) -> list[str]:
-    """Lines we can predict, rendered up front so they play at once: every fixed line,
-    urgent ones first, the low-fuel warning for the last few laps, and the radio check."""
+def warm_lines(settings: Settings, variants: dict[str, list[str]] | None = None) -> list[str]:
+    """Lines we can predict, rendered up front so they play at once: every fixed line and
+    its AI variants, urgent ones first, the fuel and pit-closing lines for the values they
+    can take, and the radio check."""
     calls = load_calls()
-    lines = sorted(calls.values(), key=lambda line: line["priority"])
-    warm = [line["text"] for line in lines if "{" not in line["text"]]
-    laps = range(1, int(settings.thresholds["fuel"]["warn_laps"]) + 1)
-    closing = calls["pit_window_closing"]["text"]
+    variants = variants or {}
     warn_min = max(1, round(settings.thresholds["pit"]["closing_warn_s"] / 60))
-    minutes = ["a minute", *(f"{words(m)} minutes" for m in range(2, warn_min + 1))]
-    return [
-        *warm,
-        *(closing.format(minutes=m) for m in minutes),
-        *(calls["fuel_warn"]["text"].format(laps=words(n)) for n in laps),
-        RADIO_CHECK,
-    ]
+    fill = {
+        "fuel_warn": [{"laps": words(n)} for n in range(1, int(settings.thresholds["fuel"]["warn_laps"]) + 1)],
+        "pit_window_closing": [{"minutes": "a minute"}, *({"minutes": f"{words(m)} minutes"} for m in range(2, warn_min + 1))],
+    }
+    warm: list[str] = []
+    for kind, line in sorted(calls.items(), key=lambda item: item[1]["priority"]):
+        for text in [line["text"], *variants.get(kind, [])]:
+            if "{" not in text:
+                warm.append(text)
+            else:
+                warm += [text.format(**values) for values in fill.get(kind, [])]
+    return [*warm, RADIO_CHECK]
 
 
-def settings_message(prefs: Prefs) -> dict[str, Any]:
+def settings_message(prefs: Prefs, variants: dict[str, list[str]] | None = None) -> dict[str, Any]:
     available = {
         engine: {choice: all(p.exists() for p in model_files(engine, choice)) for choice in VOICES[engine]}
         for engine in VOICES
     }
-    return {"type": "settings", **asdict(prefs), "choices": CHOICES, "downloaded": available}
+    count = sum(len(v) for v in (variants or {}).values())
+    return {"type": "settings", **asdict(prefs), "choices": CHOICES, "downloaded": available, "ai_lines": count}
 
 
 def default_voice(prefs: Prefs) -> Voice:
@@ -89,6 +94,7 @@ def create_app(
     if voice_factory is None:
         voice_factory = default_voice if run_poller else (lambda prefs: Voice("off"))
     voice = voice_factory(settings.prefs)
+    variants = settings.variants
     reason = ""
     if source is None:
         try:
@@ -99,15 +105,20 @@ def create_app(
     calls = settings.thresholds["calls"]
     poller = Poller(
         source, hub.broadcast, hz=settings.poll_hz, unavailable_reason=reason,
-        engine=EventEngine(settings.thresholds),
+        engine=EventEngine(settings.thresholds, variants=None if settings.prefs.lite else variants),
         radio=Radio(spacing_s=calls["spacing_s"], expire_s=calls["expire_s"]),
         voice=voice,
     )
     poller.max_priority = CALL_PRIORITY[settings.prefs.calls]
 
+    def ai_status(prefs: Prefs) -> str:
+        return "lite" if prefs.lite else "ready" if variants else "missing"
+
+    poller.ai_status = ai_status(settings.prefs)
+
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        voice.start(warm_lines(settings))
+        voice.start(warm_lines(settings, None if settings.prefs.lite else variants))
         task = asyncio.create_task(poller.run()) if run_poller else None
         try:
             yield
@@ -131,7 +142,7 @@ def create_app(
 
     @app.get("/api/settings")
     async def get_settings() -> dict[str, Any]:
-        return settings_message(settings.prefs)
+        return settings_message(settings.prefs, variants)
 
     @app.put("/api/settings")
     async def put_settings(changes: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -144,16 +155,21 @@ def create_app(
         if (new.voice, new.engine) != (old.voice, old.engine):
             previous = poller.voice
             fresh = voice_factory(new)
-            fresh.start(warm_lines(settings))
+            fresh.start(warm_lines(settings, None if new.lite else variants))
             poller.set_voice(fresh)
             if previous:
                 await asyncio.to_thread(previous.close)  # may wait for a line to finish
         elif poller.voice:
             poller.voice.volume = new.volume
         poller.max_priority = CALL_PRIORITY[new.calls]
+        if new.lite != old.lite:
+            if poller.engine:
+                poller.engine.variants = {} if new.lite else variants
+            poller.ai_status = ai_status(new)
+            await hub.broadcast(poller.status())
         if settings.prefs_path:
             new.save(settings.prefs_path)
-        msg = settings_message(new)
+        msg = settings_message(new, variants)
         await hub.broadcast(msg)
         log.info("settings changed: %s", changes)
         return msg
@@ -174,7 +190,7 @@ def create_app(
         if poller.last is not None:
             await websocket.send_json({"type": "telemetry", "data": poller.last})
         await websocket.send_json({"type": "radio_log", "calls": list(poller.radio_log)})
-        await websocket.send_json(settings_message(settings.prefs))
+        await websocket.send_json(settings_message(settings.prefs, variants))
         hub.clients.add(websocket)
         try:
             while True:

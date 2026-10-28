@@ -23,6 +23,8 @@ uv run pitwall --lan                      # allow phone/tablet on the network
 uv run pitwall voices download            # Kokoro model + voices, 120 MB, to %LOCALAPPDATA%\PitWall\kokoro
 uv run pitwall --voice female --volume 0.8 # male (default, bm_george), female (af_heart), off
 uv run pitwall --engine piper             # fallback engine; run voices download --engine piper first
+uv run pitwall lines generate             # ACC closed: qwen3:4b writes line variants (~5 min incl. voice)
+uv run pitwall lines show                 # canned line (=) and AI variants (~) per call
 uv run pytest
 ```
 
@@ -32,7 +34,8 @@ uv run pytest
 - **Phase 1 Windows checks merged** (PR #3). Open: yellow/blue flag sighting, FPS comparison without Pit Wall.
 - **Phase 2 in progress** (`feat/phase2-event-engine`): event engine, canned calls, radio queue, subtitle strip and radio log done; checked live in a Monza race (5 sane calls). Voice done: Kokoro `bm_george` (British male) by default, casual lines, radio-style loudness; Piper kept as `--engine piper`. Confirmed OK by the user in a live race (volume, voice, timing). Merged as PR #4.
 - **Phase 2 settings** (`feat/phase2-settings`): Settings screen (voice, engine, volume, test voice, which calls, subtitles on/off and size), saved to `%LOCALAPPDATA%\PitWall\settings.json`, applied live. Merged as PR #5.
-- **Phase 2 pit window** (`feat/phase2-pit-window`): calls for window open, closing (2 min before), missed, and stop done. Confirmed live in a 20-minute race with a 10-minute window: open and stop-done calls came at the exact moments. Still to do in phase 2: Lite mode (needs the phase 3 AI first).
+- **Phase 2 pit window** (`feat/phase2-pit-window`): calls for window open, closing (2 min before), missed, and stop done. Confirmed live in a 20-minute race with a 10-minute window: open and stop-done calls came at the exact moments. Merged as PR #6.
+- **Phase 3 AI wording** (`feat/phase3-ai-wording`): AI-written line variants, made ahead of time with Ollama `qwen3:4b`, picked per call (never the same twice in a row); Lite mode = canned lines only; AI pill. 61 checked lines generated. Not yet heard in a race.
 
 ## Phase 1 Windows checklist
 
@@ -63,6 +66,8 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - Piper (`piper-tts` 1.8, GPL-3.0, fine for personal use, check before distributing): model load ~10 s, so it runs in the voice thread at startup (pill shows Loading). `PiperVoice.load` uses default onnxruntime options (big memory arena, all cores); `voice.piper_synth` builds the session itself with the arena off and 2 threads: 164 MB working set / 365 MB private instead of 268 / 629, and a new line still renders in 0.4-0.6 s. Lines without placeholders are pre-rendered; every spoken line is cached as WAV in `%LOCALAPPDATA%\PitWall\cache`.
 - Voice plays on the gaming PC (`winsound`, blocking, in the voice thread), not in the browser: no autoplay limits, and the driver hears it in the headset. A dashboard on a phone shows subtitles only.
 - Pit window (2026-10-28, 5-minute Monza race, no mandatory stop set): `session_time_left` is **ms** (300000 at the start, 0 at the flag, frozen before the start). `pit_window_start`/`end` (static) are ms too and centred on half distance: 150500 / 149500, start + end = race length. start >= end means no window; that race also had `mandatory_pit_done` true and `missing_mandatory_pits` 0 throughout. So `events._pit_window` uses elapsed = start + end - time left (works when joining mid-race). Confirmed in a 20-minute race with a 10-minute window (`recordings/pit_stop_race.jsonl`): window 300000-900000 (minutes 5-15), start + end = 1200000 = race length; at the stop `missing_mandatory_pits` 1 -> 0 and `mandatory_pit_done` false -> true flip in the same frame, as the car leaves the box. `recordings/pit_window_test.jsonl` is the 5-minute race without a window.
+- Phase 3 design (2026-10-28, user's choice): this PC is a GTX 1650 4 GB laptop (i5-9300H, 16 GB). With ACC open, 3.67 GB VRAM is used, so a live LLM would run on the CPU: ~3-5 s per call for qwen3:4b and CPU bursts mid-race. So the PRD's live rewording became pre-generation: `pitwall lines generate` (ACC closed, GPU free) asks Ollama for variants of every calls.toml line, filters them (`wording.check`), saves `%LOCALAPPDATA%\PitWall\lines.json` and pre-renders them with the voice. No AI runs during a race. qwen3:4b takes 3.5 GB with context, so ~66% GPU / 34% CPU; a run is ~2-3 min of AI plus ~3 min of Kokoro.
+- qwen3:4b line quality: the first run invented facts ("take the win"), gave bad advice ("slow down", "fix it quickly"), went robotic ("problem detected") and emitted U+FFFD. The prompt now asks for the relaxed tone and no new facts or advice; `wording.check` rejects digits, non-ASCII, dashes, colons, a sentence starting with a placeholder, pronouns and a banned-word list. `load()` re-checks saved lines, so tightening the filter needs no regeneration. Second run: 61 of 66 kept. Read `pitwall lines show` after every generate.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.
@@ -78,6 +83,7 @@ src/pitwall/
   poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
   events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
   calls.toml           canned radio lines and priorities
+  wording.py           AI line variants: Ollama prompt, checks, lines.json, generate/show CLI
   voice.py             TTS (Kokoro default, Piper fallback): model load, WAV cache, priority playback thread, downloads
   server.py            FastAPI: static dashboard, /ws, /api/status
   telemetry/acc.py     ACC shared memory (Windows)
@@ -88,7 +94,7 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice; ai = ready, missing, lite), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change).
 
 HTTP: `GET /api/status`, `GET /api/settings`, `PUT /api/settings` (partial JSON, 400 on a bad value), `POST /api/voice/test` (radio check, 409 when the voice is off).
 

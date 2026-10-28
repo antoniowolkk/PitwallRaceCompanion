@@ -122,6 +122,16 @@
         </fieldset>
       </section>
 
+      <section class="hud" aria-labelledby="set-wording">
+        <h2 id="set-wording">Radio wording</h2>
+        <fieldset class="choice">
+          <legend>How the engineer talks</legend>
+          <label><input type="radio" name="lite" value="false"><span><b>Varied</b> Canned lines plus <em id="ai-count">none yet</em></span></label>
+          <label><input type="radio" name="lite" value="true"><span><b>Fixed (Lite mode)</b> Canned lines only</span></label>
+        </fieldset>
+        <p class="note" id="ai-missing" hidden>▲ No AI-written lines yet. With ACC closed, run <code>uv run pitwall lines generate</code>, then restart Pit Wall.</p>
+      </section>
+
       <section class="hud" aria-labelledby="set-subs">
         <h2 id="set-subs">Subtitles</h2>
         <label class="toggle"><input type="checkbox" name="subtitles"><span>Show radio calls as subtitles</span></label>

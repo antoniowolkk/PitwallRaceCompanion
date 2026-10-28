@@ -6,6 +6,7 @@ model reword non-urgent ones). The Radio queue decides what goes out next.
 
 from __future__ import annotations
 
+import random
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,8 +64,18 @@ class Call:
 
 
 class EventEngine:
-    def __init__(self, thresholds: dict[str, Any], calls: dict[str, dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        thresholds: dict[str, Any],
+        calls: dict[str, dict[str, Any]] | None = None,
+        variants: dict[str, list[str]] | None = None,
+        rng: random.Random | None = None,
+    ):
         self._lines = calls or load_calls()
+        # AI-written alternatives per kind (wording.py); empty means canned lines only (Lite mode).
+        self.variants = variants or {}
+        self._rng = rng or random.Random()
+        self._last_text: dict[str, str] = {}
         tyres, fuel, c = thresholds["tyres"], thresholds["fuel"], thresholds["calls"]
         self._temp_hot = tyres["temp_c"][1] + 5.0  # same line the dashboard calls "Hot"
         self._psi_high = tyres["pressure_psi"][1] + 0.5
@@ -94,7 +105,16 @@ class EventEngine:
         if last is not None and now - last < cooldown:
             return None
         self._last_call[kind] = now
-        return Call(kind, int(line["priority"]), line["text"].format(**fields), now, snap.laps + 1)
+        return Call(kind, int(line["priority"]), self._pick(kind, line["text"]).format(**fields), now, snap.laps + 1)
+
+    def _pick(self, kind: str, canned: str) -> str:
+        """The canned line or one of its variants, never the same one twice in a row."""
+        options = [canned, *self.variants.get(kind, [])]
+        if len(options) > 1:
+            options = [o for o in options if o != self._last_text.get(kind)]
+        text = self._rng.choice(options)
+        self._last_text[kind] = text
+        return text
 
     def update(self, snap: Snapshot, now: float) -> list[Call]:
         """Feed one snapshot; returns the calls it triggers (often none)."""

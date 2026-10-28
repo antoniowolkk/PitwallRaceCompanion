@@ -422,3 +422,4 @@ body[data-acc="unavailable"] :is(.strip, .rpm, .tiles) { opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+.choice label em { font-style: normal; }

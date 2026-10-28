@@ -7,7 +7,8 @@ Product spec: [docs/PRD.md](docs/PRD.md).
 ## Status
 
 Phase 1 done: core service, ACC shared memory reader, mock and replay modes, Live dashboard.
-Phase 2 in progress: event engine, casual radio calls with subtitles and radio log, the Kokoro engineer voice, and a Settings screen are in; Lite mode and a pit window call are next.
+Phase 2 done: event engine, casual radio calls with subtitles and radio log, the Kokoro engineer voice, a Settings screen and pit window calls.
+Phase 3 in progress: AI-written variants of every radio line, made ahead of time with a local [Ollama](https://ollama.com) model so nothing AI runs during a race; Lite mode keeps the fixed lines.
 
 ## Run
 
@@ -30,6 +31,7 @@ uv run pitwall --replay recordings/barcelona.jsonl
 uv run pitwall --lan                             # let a tablet or phone on the network connect
 uv run pitwall --voice female --volume 0.8       # voice: male (default), female, off
 uv run pitwall --engine piper                    # lighter, faster, flatter voice engine
+uv run pitwall lines generate                    # with ACC closed: AI-write varied radio lines (needs Ollama + qwen3:4b)
 ```
 
 The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) (`bm_george` male, `af_heart` female), run on the CPU and played on the PC. [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) is the lighter fallback.

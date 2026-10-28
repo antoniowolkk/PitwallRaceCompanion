@@ -7,6 +7,7 @@
     pitwall --voice female          engineer voice: male (default), female, off
     pitwall --engine piper          faster, flatter voice engine (default kokoro)
     pitwall voices download         fetch the voice model (Kokoro 120 MB, Piper 63 MB a voice)
+    pitwall lines generate          AI-write varied radio lines with Ollama (run when not racing)
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ def _serve(args: argparse.Namespace) -> None:
     prefs_path = data_dir() / "settings.json"
     flags = {"voice": args.voice, "volume": args.volume, "engine": args.engine}
     prefs = Prefs.load(prefs_path).updated({k: v for k, v in flags.items() if v is not None})
+    from . import wording
+    from .events import load_calls
+
+    variants = wording.load(wording.lines_path(), load_calls())
     settings = Settings(
         poll_hz=args.hz,
         port=args.port,
@@ -36,6 +41,7 @@ def _serve(args: argparse.Namespace) -> None:
         replay_path=args.replay,
         prefs=prefs,
         prefs_path=prefs_path,
+        variants=variants,
     )
     if args.source:
         settings.source = args.source
@@ -82,6 +88,45 @@ def _voices(args: argparse.Namespace) -> None:
         print(f"{args.engine} {choice}: saved to {download(args.engine, choice)[0].parent}")
 
 
+def _lines(args: argparse.Namespace) -> None:
+    from . import wording
+    from .events import load_calls
+    from .server import warm_lines
+    from .voice import Voice
+
+    calls = load_calls()
+    path = wording.lines_path()
+    if args.action == "show":
+        variants = wording.load(path, calls)
+        for kind, line in calls.items():
+            print(f"{kind}:\n  = {line['text']}")
+            for text in variants.get(kind, []):
+                print(f"  ~ {text}")
+        return
+
+    models = wording.ollama_models()
+    if models is None:
+        raise SystemExit("Ollama is not running. Start it from the Start menu (or `ollama serve`) and try again.")
+    if not any(m == args.model or m == f"{args.model}:latest" for m in models):
+        raise SystemExit(f"Model {args.model} is not installed. Run: ollama pull {args.model}")
+    print(f"Writing {args.count} variants of {len(calls)} radio calls with {args.model} ...")
+    data = wording.generate(calls, n=args.count, model=args.model)
+    wording.unload(args.model)  # give the memory back before anything else runs
+    wording.save(data, path)
+    total = sum(len(v) for v in data["variants"].values())
+    print(f"Saved {total} lines to {path}")
+
+    prefs = Prefs.load(data_dir() / "settings.json")
+    voice = Voice(prefs.voice, prefs.volume, engine=prefs.engine)
+    if voice.status != "loading":
+        print(f"Voice is {voice.status}; skipping pre-render.")
+        return
+    lines = warm_lines(Settings(prefs=prefs), wording.load(path, calls))
+    print(f"Pre-rendering {len(lines)} lines with {voice.engine} {voice.voice_id} (new ones take a few seconds each) ...")
+    new = voice.render_all(lines, lambda done, n: print(f"  {done}/{n}", end="\r", flush=True))
+    print(f"\nDone: {new} new voice lines cached.")
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
@@ -107,6 +152,12 @@ def main(argv: list[str] | None = None) -> None:
     v.add_argument("which", choices=["female", "male", "all"], nargs="?", default="all")
     v.add_argument("--engine", choices=["kokoro", "piper"], default="kokoro")
     v.set_defaults(func=_voices)
+
+    w = sub.add_parser("lines", help="AI-written variants of the radio lines (needs Ollama)")
+    w.add_argument("action", choices=["generate", "show"])
+    w.add_argument("--model", default="qwen3:4b")
+    w.add_argument("--count", type=int, default=5, help="variants per call")
+    w.set_defaults(func=_lines)
 
     args = p.parse_args(argv)
     args.func(args)
