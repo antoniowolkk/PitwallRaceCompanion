@@ -36,7 +36,7 @@ uv run pytest
 - **Phase 2 settings** (`feat/phase2-settings`): Settings screen (voice, engine, volume, test voice, which calls, subtitles on/off and size), saved to `%LOCALAPPDATA%\PitWall\settings.json`, applied live. Merged as PR #5.
 - **Phase 2 pit window** (`feat/phase2-pit-window`): calls for window open, closing (2 min before), missed, and stop done. Confirmed live in a 20-minute race with a 10-minute window: open and stop-done calls came at the exact moments. Merged as PR #6.
 - **Phase 3 AI wording** (`feat/phase3-ai-wording`): AI-written line variants, made ahead of time with Ollama `qwen3:4b`, picked per call (never the same twice in a row); Lite mode = canned lines only; AI pill. 61 checked lines generated. Not yet heard in a race. Merged as PR #7.
-- **Track map** (`feat/track-map`): player position, lap fraction and inputs read from ACC; circuit outline learned from the first full lap and saved to `%LOCALAPPDATA%\PitWall	racks\<track>.json`; official turns per track in `tracks.toml` (Spa done), else turns found from speed dips; Live screen shows the map, car dot, current turn and next turn with distance. Next: per-turn tips, then official turns for Monza and Nurburgring (needs a lap there).
+- **Track map** (`feat/track-map`): player position, lap fraction and inputs read from ACC; circuit outline learned from the first full lap and saved to `%LOCALAPPDATA%\PitWall\tracks\<track>.json`; official turns per track in `tracks.toml` (Spa done), else turns found from speed dips; Live screen shows the map, car dot, current turn and next turn with distance. Next: per-turn tips, then official turns for Monza and Nurburgring (needs a lap there).
 
 ## Phase 1 Windows checklist
 
