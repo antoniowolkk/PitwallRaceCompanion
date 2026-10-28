@@ -44,6 +44,7 @@ class Poller:
         self.last: dict[str, Any] | None = None
         self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
         self.max_priority = 3  # Settings "radio calls": 1 urgent only, 2 important, 3 all
+        self.ai_status = "off"  # ready (AI-written lines loaded) | missing (not generated) | lite | off
         self._read_error_logged = False
 
     def status(self) -> dict[str, Any]:
@@ -56,7 +57,7 @@ class Poller:
             "acc": acc,
             "source": self.source.name if self.source else None,
             "reason": self._unavailable_reason,
-            "ai": "off",  # phase 3
+            "ai": self.ai_status,
             "voice": self._voice_status,
         }
 
@@ -111,6 +112,10 @@ class Poller:
                     )
                 else:
                     await self._send_radio(msg)
+
+    @property
+    def engine(self) -> EventEngine | None:
+        return self._engine
 
     @property
     def voice(self) -> Voice | None:

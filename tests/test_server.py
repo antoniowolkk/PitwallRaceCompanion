@@ -77,7 +77,7 @@ def test_websocket_sends_config_status_and_snapshot():
             status = ws.receive_json()
             tele = ws.receive_json()
         assert cfg["type"] == "config" and cfg["tyre_temp_c"] == [80.0, 90.0]
-        assert status == {"type": "status", "acc": "connected", "source": "fake", "reason": "", "ai": "off", "voice": "off"}
+        assert status == {"type": "status", "acc": "connected", "source": "fake", "reason": "", "ai": "missing", "voice": "off"}
         assert tele["data"]["speed_kmh"] == 180
 
         assert client.get("/").status_code == 200
