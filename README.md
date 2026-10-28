@@ -33,11 +33,14 @@ uv run pitwall --voice female --volume 0.8       # voice: male (default), female
 uv run pitwall --engine piper                    # lighter, faster, flatter voice engine
 uv run pitwall lines generate                    # with ACC closed: AI-write varied radio lines (needs Ollama + qwen3:4b)
 uv run pitwall tracks download                   # turn names for every ACC track (once, ~100 KB)
+uv run pitwall tips generate                     # after a session: the local AI writes personal turn tips (asks first)
 ```
 
 The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) (`bm_george` male, `af_heart` female), run on the CPU and played on the PC. [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) is the lighter fallback.
 
 The Live screen draws the circuit from your first lap and shows the turn you are in and the next one; with turn tips on, the engineer mentions a turn that went wrong last lap just before you reach it. Turn names come from [Lovely Track Data](https://github.com/Lovely-Sim-Racing/lovely-track-data) by Lovely Sim Racing, licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/); they are downloaded to your PC, not included here.
+
+After a practice or qualifying session Pit Wall shows the habits it found per turn (lockups, braking early, coasting, late on the throttle) and asks whether the local AI should write personal tips from them, for your car settings and the track conditions. Nothing runs until you say yes. In the next session at that track the engineer uses those lines; in a race tips are rare (lockups and cuts only).
 
 ## Test
 

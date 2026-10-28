@@ -54,6 +54,22 @@ spin_throttle = 0.5
 slip_samples = 2
 # A clean pass this much slower than the best one through that turn is worth a word.
 loss_s = 0.5
+# In practice and qualifying: at most this many tips a lap.
 max_per_lap = 1
+# In a race only these, and at least this many laps apart.
+race_kinds = ["tip_lockup", "tip_off"]
+race_gap_laps = 3
 # A tip not started within this many seconds is dropped: late is worse than never.
 expire_s = 2.0
+
+[style]
+# Driving style per turn, against the best clean pass through that turn. A difference this
+# big counts: braking this many metres earlier, this much lower minimum speed, this much
+# more coasting, full throttle this many metres later.
+brake_m = 20.0
+min_kmh = 5.0
+coast_s = 0.3
+full_m = 20.0
+# After a session: a turn needs this many passes, and a habit this many of them, to be a pattern.
+min_passes = 3
+min_repeats = 2

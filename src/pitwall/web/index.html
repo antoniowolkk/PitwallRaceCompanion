@@ -27,6 +27,17 @@
   <main id="live">
     <p id="banner" class="banner" role="status">Waiting for ACC. Start a session from Steam; Pit Wall connects once you are on track.</p>
 
+    <section class="hud coach" id="coach" aria-live="polite" aria-label="Personal turn tips" hidden>
+      <h2>Personal turn tips</h2>
+      <p class="coach-text" id="coach-text"></p>
+      <ul class="coach-turns" id="coach-turns"></ul>
+      <p class="coach-note" id="coach-note"></p>
+      <div class="row" id="coach-actions">
+        <button type="button" class="btn" id="coach-yes">✎ Write tips</button>
+        <button type="button" class="btn ghost" id="coach-no">Not now</button>
+      </div>
+    </section>
+
     <section class="strip" aria-label="Car">
       <div class="hud readout speed"><h2>Speed</h2><div><span class="num" id="speed">—</span><span class="unit">km/h</span></div></div>
       <div class="hud readout gear"><h2>Gear</h2><span class="num" id="gear">—</span></div>

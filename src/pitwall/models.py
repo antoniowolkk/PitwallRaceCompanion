@@ -68,6 +68,16 @@ class Snapshot:
     wheel_slip: Wheels = (0.0, 0.0, 0.0, 0.0)
     abs: float = 0.0  # ABS working right now, 0..1
     tc: float = 0.0  # traction control working right now, 0..1
+    # Car settings and conditions the per-turn tips are written for.
+    brake_bias: float = 0.0  # front share as ACC reports it (raw; the in-game number can differ per car)
+    abs_level: int = 0
+    tc_level: int = 0
+    engine_map: int = 0
+    wet_tyres: bool = False
+    grip: str = ""  # green | fast | optimum | greasy | damp | wet | flooded
+    rain: str = ""  # none | drizzle | light | medium | heavy | storm
+    air_c: float = 0.0
+    road_c: float = 0.0
 
     def to_wire(self) -> dict[str, Any]:
         """Rounded values, so the diff only sends changes a driver can see."""
@@ -108,6 +118,15 @@ class Snapshot:
             "wheel_slip": [round(s, 2) for s in self.wheel_slip],
             "abs": round(self.abs, 2),
             "tc": round(self.tc, 2),
+            "brake_bias": round(self.brake_bias, 3),
+            "abs_level": self.abs_level,
+            "tc_level": self.tc_level,
+            "engine_map": self.engine_map,
+            "wet_tyres": self.wet_tyres,
+            "grip": self.grip,
+            "rain": self.rain,
+            "air_c": round(self.air_c),
+            "road_c": round(self.road_c),
         }
 
     @classmethod

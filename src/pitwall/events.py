@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from .models import Snapshot
+from . import personal
+from .style import condition
 from .tips import Mistake, TurnCoach
 from .track import TrackMap, Turn
 
@@ -90,6 +92,7 @@ class EventEngine:
         variants: dict[str, list[str]] | None = None,
         rng: random.Random | None = None,
         track_map: TrackMap | None = None,
+        personal_root: Path | None = None,
     ):
         self._lines = calls or load_calls()
         # AI-written alternatives per kind (wording.py); empty means canned lines only (Lite mode).
@@ -113,6 +116,9 @@ class EventEngine:
         self.tips = True  # Settings: per-turn tips on or off
         self._tip_expire = thresholds["tips"]["expire_s"]
         self.prepare: list[str] = []  # tip lines to render now, so they play at once later
+        self._personal_root = personal_root
+        self.personal: dict[str, dict[str, dict[str, str]]] = {}  # condition -> turn -> habit -> AI-written line
+        self._personal_track: str | None = None
         self.reset()
 
     def reset(self) -> None:
@@ -122,6 +128,7 @@ class EventEngine:
         self._hot_since: dict[str, float] = {}
         self._pit_said: set[str] = set()  # pit window calls go out once per race
         if self.coach:
+            self.coach.finish()
             self.coach.reset()
 
     def _call(self, kind: str, now: float, snap: Snapshot, **fields: Any) -> Call | None:
@@ -235,17 +242,32 @@ class EventEngine:
     def _tips(self, snap: Snapshot, now: float) -> list[Call | None]:
         if not self.coach:
             return []
+        if snap.track != self._personal_track:
+            self.reload_personal(snap.track)
         found, due = self.coach.update(snap)
         for m in found:
             # Worded now, a lap before it is said, so the voice has time to render it.
-            m.extra["text"] = self._pick(m.kind, self._lines[m.kind]["text"]).format(
-                turn=spoken_turn(m.turn), loss=spoken_loss(m.loss_s)
-            )
+            line = self.personal_line(m, snap)
+            if line:
+                m.extra["text"], m.extra["personal"] = f"Coming up, {spoken_turn(m.turn)}. {line}", True
+            else:
+                m.extra["text"] = self._pick(m.kind, self._lines[m.kind]["text"]).format(
+                    turn=spoken_turn(m.turn), loss=spoken_loss(m.loss_s)
+                )
             if self.tips:
                 self.prepare.append(m.extra["text"])
         if not self.tips:
             return []
         return [self._tip_call(m, now, snap) for m in due]
+
+    def reload_personal(self, track: str | None) -> None:
+        self._personal_track = track
+        self.personal = personal.load(self._personal_root, track or "")
+
+    def personal_line(self, m: Mistake, snap: Snapshot) -> str | None:
+        """The AI-written line for this habit in this turn, written for today's conditions."""
+        cond = condition({"rain": snap.rain, "grip": snap.grip, "wet_tyres": snap.wet_tyres})
+        return self.personal.get(cond, {}).get(m.turn.number, {}).get(m.pattern)
 
     def _tip_call(self, m: Mistake, now: float, snap: Snapshot) -> Call:
         priority = int(self._lines[m.kind]["priority"])

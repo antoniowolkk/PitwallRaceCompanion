@@ -31,6 +31,7 @@ class Poller:
         radio: Radio | None = None,
         voice: Voice | None = None,
         track_map: TrackMap | None = None,
+        session_end: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.source = source
@@ -43,6 +44,7 @@ class Poller:
         self._voice_status = self._voice.status if self._voice else "off"
         self._clock = clock
         self.track_map = track_map
+        self._session_end = session_end
         self.connected = False
         self.last: dict[str, Any] | None = None
         self.radio_log: deque[dict[str, Any]] = deque(maxlen=20)  # newest last
@@ -87,6 +89,7 @@ class Poller:
             self._radio.clear()
             log.info("ACC %s", "connected" if self.connected else "waiting")
             await self._broadcast(self.status())
+            await self._sessions_ended()
 
         if snap is None:
             return
@@ -109,6 +112,7 @@ class Poller:
                         self._voice.prepare(text)
                 self._engine.prepare.clear()
             self._radio.push([c for c in calls if c.priority <= self.max_priority])
+            await self._sessions_ended()
             call = self._radio.next(now)
             if call:
                 log.info("radio: %s", call.text)
@@ -126,6 +130,16 @@ class Poller:
                 else:
                     await self._send_radio(msg)
 
+    async def _sessions_ended(self) -> None:
+        coach = self._engine.coach if self._engine else None
+        while coach and coach.finished:
+            ended = coach.finished.pop(0)
+            if self._session_end:
+                try:
+                    await self._session_end(ended)
+                except Exception:
+                    log.exception("saving the session failed")
+
     @property
     def engine(self) -> EventEngine | None:
         return self._engine
@@ -133,6 +147,9 @@ class Poller:
     @property
     def voice(self) -> Voice | None:
         return self._voice
+
+    def set_session_end(self, callback: Callable[[dict[str, Any]], Awaitable[None]] | None) -> None:
+        self._session_end = callback
 
     def set_voice(self, voice: Voice | None) -> None:
         """Swap the voice live; the new status goes out on the next tick."""

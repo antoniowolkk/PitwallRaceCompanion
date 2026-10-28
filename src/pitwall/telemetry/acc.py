@@ -41,6 +41,16 @@ _FLAG = {
 }
 
 
+_GRIP = {
+    "ACC_GREEN": "green", "ACC_FAST": "fast", "ACC_OPTIMUM": "optimum", "ACC_GREASY": "greasy",
+    "ACC_DAMP": "damp", "ACC_WET": "wet", "ACC_FLOODED": "flooded",
+}
+_RAIN = {
+    "ACC_NO_RAIN": "none", "ACC_DRIZZLE": "drizzle", "ACC_LIGHT_RAIN": "light", "ACC_MEDIUM_RAIN": "medium",
+    "ACC_HEAVY_RAIN": "heavy", "ACC_THUNDERSTORM": "storm",
+}
+
+
 def _wheels(w: Any) -> tuple[float, float, float, float]:
     return (w.front_left, w.front_right, w.rear_left, w.rear_right)
 
@@ -99,6 +109,15 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         wheel_slip=_wheels(physics.wheel_slip),
         abs=float(physics.abs),
         tc=float(physics.tc),
+        brake_bias=float(physics.brake_bias),
+        abs_level=int(graphics.abs_level),
+        tc_level=int(graphics.tc_level),
+        engine_map=int(graphics.engine_map),
+        wet_tyres=bool(graphics.rain_tyres),
+        grip=_GRIP.get(graphics.track_grip_status.name, ""),
+        rain=_RAIN.get(graphics.rain_intensity.name, ""),
+        air_c=float(physics.air_temp),
+        road_c=float(physics.road_temp),
     )
 
 

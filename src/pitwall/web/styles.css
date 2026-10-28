@@ -318,6 +318,23 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .log li[data-priority="1"] .prio { color: var(--crit); }
 .log li[data-priority="2"] .prio { color: var(--maroon-tint); }
 
+/* Personal turn tips card */
+.coach { display: grid; gap: 10px; }
+.coach[data-level="warn"] { --accent: var(--warn); }
+.coach[data-level="good"] { --accent: var(--good); }
+.coach[data-level="bad"] { --accent: var(--crit); }
+.coach-text { margin: 0; font-size: 17px; }
+.coach[data-level="warn"] .coach-text { color: var(--warn); }
+.coach[data-level="good"] .coach-text { color: var(--good); }
+.coach[data-level="bad"] .coach-text { color: var(--crit); }
+.coach-turns { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; list-style: none; color: var(--text-2); }
+.coach-turns b { color: var(--text); font-weight: 600; }
+.coach-turns:empty, .coach-note:empty { display: none; }
+.coach-note { margin: 0; color: var(--text-2); font-size: 14px; }
+.btn.ghost { background: var(--surface-raised); color: var(--text); }
+.btn.ghost:hover { background: var(--border); }
+.coach[hidden], .coach .row[hidden] { display: none; }
+
 /* Track map: turn readout left, outline right; the outline is learned from the first lap. */
 .trackmap { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px; align-items: center; }
 .turns { display: grid; gap: 8px; align-self: start; }

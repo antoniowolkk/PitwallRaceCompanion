@@ -98,7 +98,7 @@ def test_cli_parses_every_command():
 
     from pitwall.__main__ import main
 
-    for argv in (["--help"], ["record", "--help"], ["voices", "--help"], ["lines", "--help"], ["tracks", "--help"]):
+    for argv in (["--help"], ["record", "--help"], ["voices", "--help"], ["lines", "--help"], ["tracks", "--help"], ["tips", "--help"]):
         with pytest.raises(SystemExit) as e:
             main(argv)
         assert e.value.code == 0

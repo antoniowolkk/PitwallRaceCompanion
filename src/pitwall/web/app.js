@@ -167,6 +167,60 @@
     }
   }
 
+  // Personal turn tips: after a session with habits, the card asks before the local AI
+  // writes anything; nothing runs until the driver clicks "Write tips".
+  const HABIT = {
+    lockup: "lockups", wheelspin: "wheelspin", off: "track limits", early_brake: "braking early",
+    low_min_speed: "low minimum speed", coasting: "coasting", late_throttle: "late on the throttle",
+  };
+  let coach = null, coachTimer = null;
+
+  function renderCoach(c) {
+    coach = c;
+    const box = $("coach"), o = c.offer;
+    clearTimeout(coachTimer);
+    box.hidden = !(o || c.running || c.error || c.done);
+    if (box.hidden) return;
+    box.dataset.level = c.error ? "bad" : c.running ? "idle" : o ? "warn" : "good";
+    let text;
+    if (c.running) text = `○ Writing tips with the local AI… ${c.progress}`;
+    else if (c.error) text = `✕ ${c.error}`;
+    else if (o) text = `▲ Habits found at ${o.track.replaceAll("_", " ")} (${o.kind}, ${o.laps} laps, ${o.condition}). Write personal tips with the local AI?`;
+    else text = `● ${c.done}`;
+    $("coach-text").textContent = text;
+    const list = $("coach-turns");
+    list.replaceChildren();
+    for (const t of o && !c.running ? o.turns : []) {
+      const li = document.createElement("li");
+      const b = document.createElement("b");
+      b.textContent = t.name || `Turn ${t.turn}`;
+      li.append(b, ` ${t.habits.map((h) => HABIT[h] || h).join(", ")}`);
+      list.append(li);
+    }
+    const live = state.status && state.status.acc === "connected";
+    $("coach-note").textContent = o && !c.running
+      ? `Uses the graphics card for about a minute${live ? "; ACC is running, so best after you quit it" : ""}. Used from your next session at this track.`
+      : "";
+    $("coach-actions").hidden = !o || c.running;
+    if (!o && !c.running && !c.error) coachTimer = setTimeout(() => ($("coach").hidden = true), 20000);
+  }
+
+  async function coachPost(path) {
+    if (!coach || !coach.offer) return;
+    $("coach-actions").hidden = true;
+    try {
+      const res = await fetch(path, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session: coach.offer.session }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    } catch (err) {
+      renderCoach({ ...coach, error: `Could not start: ${err.message}` });
+    }
+  }
+  $("coach-yes").addEventListener("click", () => coachPost("/api/coach/generate"));
+  $("coach-no").addEventListener("click", () => coachPost("/api/coach/dismiss"));
+
   // Back to the "no data" look, so old numbers never sit under a Waiting banner.
   function clear() {
     for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
@@ -338,6 +392,9 @@
         track = msg;
         drawTrack();
         break;
+      case "coach":
+        renderCoach(msg);
+        return;
     }
     schedule();
   }

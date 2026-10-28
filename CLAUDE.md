@@ -26,6 +26,8 @@ uv run pitwall --engine piper             # fallback engine; run voices download
 uv run pitwall lines generate             # ACC closed: qwen3:4b writes line variants (~5 min incl. voice)
 uv run pitwall lines show                 # canned line (=) and AI variants (~) per call
 uv run pitwall tracks download            # turn names for all 25 ACC tracks (Lovely Track Data, ~100 KB)
+uv run pitwall tips show                  # habits from the last session and saved personal tips
+uv run pitwall tips generate              # asks first, then qwen3:4b writes personal tips (ACC closed is best)
 uv run pytest
 ```
 
@@ -38,6 +40,7 @@ uv run pytest
 - **Phase 2 pit window** (`feat/phase2-pit-window`): calls for window open, closing (2 min before), missed, and stop done. Confirmed live in a 20-minute race with a 10-minute window: open and stop-done calls came at the exact moments. Merged as PR #6.
 - **Phase 3 AI wording** (`feat/phase3-ai-wording`): AI-written line variants, made ahead of time with Ollama `qwen3:4b`, picked per call (never the same twice in a row); Lite mode = canned lines only; AI pill. 61 checked lines generated. Not yet heard in a race. Merged as PR #7.
 - **Track map** (`feat/track-map`): player position, lap fraction and inputs read from ACC; circuit outline learned from the first full lap and saved to `%LOCALAPPDATA%\PitWall\tracks\<track>.json`; official turns per track in `tracks.toml` (Spa done), else turns found from speed dips; Live screen shows the map, car dot, current turn and next turn with distance. Turns for every ACC track come from Lovely Track Data (`pitwall tracks download`, CC BY-NC-SA 4.0, downloaded to `tracks\lovely`, not committed); `tracks.toml` overrides with official numbers (Spa). Per-turn tips (`tips.py`): lockup, wheelspin, lap invalidated, or >= 0.5 s slower than the best pass through that turn; said ~5 s before the turn next lap, max one a lap, never inside a turn, not the same turn two laps running; Settings toggle. Checked on the Spa replay; not yet heard live.
+- **Personal turn tips** (same branch, user's spec 2026-10-28): tips follow the driver's style, car settings and track conditions; full rate in practice/qualifying, in a race only lockups and cuts, 3+ laps apart. `tips.py` measures every pass (braking point, peak brake, min speed, coasting, full-throttle point, ABS time, lockup, wheelspin, cut) with the settings and conditions at the time; a session ending (track/session change, disconnect) is saved to `%LOCALAPPDATA%\PitWall\sessions`; `style.py` finds habits per turn against the best clean pass. The local AI writes lines **only after the driver says yes** (dashboard card "Write tips" / `pitwall tips generate` asks y/N); `personal.py` checks them (wording.check), saves `tips\<track>.json` per condition (dry/wet), and the engine uses them over the canned line when the same habit shows up. Not yet run with the real model or heard live.
 
 ## Phase 1 Windows checklist
 
@@ -87,7 +90,9 @@ src/pitwall/
   poller.py            poll loop, connect/disconnect, sends only changes, runs the radio
   track.py             track map: outline learned per track; turns from tracks.toml, Lovely Track Data, or speed dips
   tracks.toml          official turn numbers and positions (Spa), overrides Lovely
-  tips.py              per-turn mistakes (lockup, wheelspin, off, slow) and when to mention them
+  tips.py              per-turn passes (style, mistakes) and when to mention them; race = rarer
+  style.py             session save, per-turn habits against the best pass, the offer
+  personal.py          local AI writes personal tips from habits (on request), checks, saves per track/condition
   events.py            event engine (fuel, flags, tyres, best lap) and Radio priority queue
   calls.toml           canned radio lines and priorities
   wording.py           AI line variants: Ollama prompt, checks, lines.json, generate/show CLI
@@ -101,9 +106,9 @@ tests/                 pytest
 docs/                  PRD, reference setup file
 ```
 
-WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice; ai = ready, missing, lite), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change), `track` (track name, outline points or null while learning, turns with number/name/start/end, length_m, source = official/lovely/auto; on connect and when the map changes).
+WebSocket messages: `config` (thresholds, once), `status` (acc/ai/voice; ai = ready, missing, lite), `telemetry` (`data` = changed fields only; full snapshot on connect), `radio` (one call: kind, priority, text, lap, time), `radio_log` (last 20 calls, on connect), `settings` (driver prefs + which voices are downloaded; on connect and after every change), `track` (track name, outline points or null while learning, turns with number/name/start/end, length_m, source = official/lovely/auto; on connect and when the map changes), `coach` (offer of a session with habits, running, progress, error, done; on connect and on change).
 
-HTTP: `GET /api/status`, `GET /api/settings`, `PUT /api/settings` (partial JSON, 400 on a bad value), `POST /api/voice/test` (radio check, 409 when the voice is off).
+HTTP: `GET /api/status`, `GET /api/settings`, `PUT /api/settings` (partial JSON, 400 on a bad value), `POST /api/voice/test` (radio check, 409 when the voice is off), `GET /api/coach`, `POST /api/coach/generate` and `/api/coach/dismiss` (`{"session": id}`; generate 404 unknown, 409 busy).
 
 Settings: `config.Prefs` is the single source; `settings.json` is loaded at start and CLI flags (`--voice`, `--engine`, `--volume`) override it for that run only. Changing voice or engine builds a new `Voice` and swaps it into the poller; volume is applied at play time (cache stays full volume, no re-render); "which calls" filters by priority after the engine runs, so cooldowns stay right.
 
