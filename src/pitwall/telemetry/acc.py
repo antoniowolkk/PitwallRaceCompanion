@@ -118,6 +118,10 @@ def from_acc(physics: Any, graphics: Any, static: Any) -> Snapshot:
         rain=_RAIN.get(graphics.rain_intensity.name, ""),
         air_c=float(physics.air_temp),
         road_c=float(physics.road_temp),
+        slip_angle=_wheels(physics.slip_angle),
+        yaw_rate=float(physics.local_angular_vel.y),
+        g_lat=float(physics.g_force.x),
+        g_long=float(physics.g_force.z),
     )
 
 

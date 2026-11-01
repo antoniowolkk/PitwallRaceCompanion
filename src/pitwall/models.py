@@ -78,6 +78,12 @@ class Snapshot:
     rain: str = ""  # none | drizzle | light | medium | heavy | storm
     air_c: float = 0.0
     road_c: float = 0.0
+    # Car balance for the setup advisor (phase 5): front against rear slip angle says
+    # understeer or oversteer; yaw rate and g say how hard the car is turning.
+    slip_angle: Wheels = (0.0, 0.0, 0.0, 0.0)  # per tyre, as ACC reports it (to verify: radians)
+    yaw_rate: float = 0.0  # local angular velocity around the vertical axis
+    g_lat: float = 0.0
+    g_long: float = 0.0
 
     def to_wire(self) -> dict[str, Any]:
         """Rounded values, so the diff only sends changes a driver can see."""
@@ -127,12 +133,16 @@ class Snapshot:
             "rain": self.rain,
             "air_c": round(self.air_c),
             "road_c": round(self.road_c),
+            "slip_angle": [round(a, 3) for a in self.slip_angle],
+            "yaw_rate": round(self.yaw_rate, 3),
+            "g_lat": round(self.g_lat, 2),
+            "g_long": round(self.g_long, 2),
         }
 
     @classmethod
     def from_wire(cls, data: dict[str, Any]) -> Snapshot:
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        for key in ("tyre_temp_c", "tyre_pressure_psi", "wheel_slip"):
+        for key in ("tyre_temp_c", "tyre_pressure_psi", "wheel_slip", "slip_angle"):
             if key in known:
                 known[key] = tuple(known[key])
         return cls(**known)
