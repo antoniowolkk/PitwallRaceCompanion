@@ -320,6 +320,8 @@ class EventEngine:
     def _setup_call(self, snap: Snapshot, now: float) -> list[Call]:
         """A new setup proposal, mentioned once by the coach on a straight (not in races)."""
         d = self.setup.announce if self.setup else None
+        if d and self.setup.draft != d:  # applied, rejected or replaced since: old news
+            self.setup.announce = d = None
         if not d or (snap.session == "race" and not self.stint.c["race"]) or not self.stint._safe(snap):
             return []
         self.setup.announce = None
