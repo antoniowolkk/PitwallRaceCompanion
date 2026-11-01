@@ -323,6 +323,103 @@
     }
   }
 
+  // Setup screen: pick a base, see the balance, approve or reject one change at a time.
+  const RESULT = { better: "● Better", worse: "▲ Worse", same: "– No clear change", undone: "↶ Went back" };
+  let setupView = null;
+
+  function renderSetup(v) {
+    setupView = v;
+    $("su-where").textContent = v.car ? `${v.car} · ${v.track}`.replaceAll("_", " ") : "";
+    const sel = $("su-file");
+    const keep = sel.value;
+    sel.replaceChildren(...v.files.map((f) => new Option(f, f)));
+    sel.value = v.files.includes(keep) ? keep : v.current || v.files[0] || "";
+    $("su-use").disabled = !v.files.length;
+    $("su-current").textContent = !v.car ? "No car and track yet: start a session in ACC."
+      : !v.files.length ? `No setups saved for this car and track (${v.folder || "ACC setups folder"}).`
+      : v.current ? `Driving: ${v.current}${v.base && v.base !== v.current ? ` (base ${v.base})` : ""}` : "○ Pick the setup you are driving.";
+
+    const d = v.draft;
+    const box = $("su-proposal");
+    box.dataset.level = d ? "warn" : v.waiting ? "idle" : v.history[0] && v.history[0].result === "worse" ? "bad" : "good";
+    $("su-note").textContent = v.note || "";
+    $("su-note").hidden = !v.note;
+    $("su-draft").hidden = !d;
+    if (d) {
+      $("su-symptom").textContent = `▲ ${d.label}: ${d.metric} ${d.unit} over the last ${d.laps} clean laps (limit ${d.limit})`;
+      $("su-change").textContent = `${d.param_label}: ${d.from} → ${d.to} (one click ${d.step > 0 ? "up" : "down"})`;
+      $("su-why").textContent = d.why;
+      $("su-source").textContent = `Source: ${d.source}. New file next to ${d.base}; the original stays as it is.`;
+    }
+    $("su-apply").hidden = $("su-reject").hidden = !d;
+    $("su-loaded").hidden = !v.waiting;
+    $("su-back").hidden = !(v.history[0] && v.history[0].result === "worse" && !v.waiting);
+
+    const sym = $("su-symptoms");
+    sym.replaceChildren(...(v.symptoms.length ? v.symptoms.map((s) => {
+      const li = document.createElement("li");
+      const on = s.strength >= 1;
+      li.dataset.level = on ? "watch" : "good";
+      const b = document.createElement("b");
+      b.textContent = `${on ? "▲" : "●"} ${s.label}`;
+      const meter = document.createElement("span");
+      meter.className = "su-meter";
+      const fill = document.createElement("i");
+      fill.style.width = `${Math.min(100, Math.max(0, s.strength * 50))}%`;
+      meter.append(fill);
+      const val = document.createElement("span");
+      val.className = "num";
+      // Below zero the car leans the other way (an "oversteer" metric of -0.9 is understeer): none of this.
+      val.textContent = s.strength <= 0 ? "none" : `${s.metric} ${s.unit} (limit ${s.limit})`;
+      li.append(b, meter, val);
+      return li;
+    }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "Needs 3 clean laps." })]));
+
+    const vals = $("su-values");
+    const entries = Object.entries(v.values);
+    vals.replaceChildren(...(entries.length ? entries.map(([, p]) => {
+      const li = document.createElement("li");
+      li.innerHTML = "<span></span><b></b>";
+      li.firstChild.textContent = p.label;
+      li.lastChild.textContent = p.value;
+      return li;
+    }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "Pick a base setup." })]));
+
+    const hist = $("su-history");
+    if (v.history.length) {
+      hist.replaceChildren(...v.history.map((h) => {
+        const li = document.createElement("li");
+        const head = document.createElement("b");
+        head.textContent = `${h.file}: ${h.param.replaceAll("_", " ")} ${h.from} → ${h.to}`;
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = `${h.made} · for ${h.symptom.replaceAll("_", " ")} · ${RESULT[h.result] || "○ Checking after you load it"}`;
+        li.append(head, p);
+        return li;
+      }));
+    }
+  }
+
+  async function setupPost(path, body) {
+    const state = $("su-state");
+    try {
+      const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.detail || res.statusText);
+      state.dataset.level = "good";
+      state.textContent = path.endsWith("apply") ? `● Written: ${out.current}. Load it in the garage.` : "● Done";
+      renderSetup(out);
+    } catch (err) {
+      state.dataset.level = "bad";
+      state.textContent = `✕ ${err.message}`;
+    }
+  }
+  $("su-use").addEventListener("click", () => setupPost("/api/setup/base", { file: $("su-file").value }));
+  $("su-apply").addEventListener("click", () => setupPost("/api/setup/apply"));
+  $("su-reject").addEventListener("click", () => setupPost("/api/setup/reject"));
+  $("su-loaded").addEventListener("click", () => setupPost("/api/setup/loaded"));
+  $("su-back").addEventListener("click", () => setupPost("/api/setup/back"));
+
   // Back to the "no data" look, so old numbers never sit under a Waiting banner.
   function clear() {
     for (const id of ["speed", "gear", "lap", "current", "flag-txt", "rpm", "fuel", "fuel-laps", "fuel-per-lap", "last", "best"]) {
@@ -500,6 +597,9 @@
       case "coach_view":
         renderCoachView(msg);
         return;
+      case "setup":
+        renderSetup(msg);
+        return;
     }
     schedule();
   }
@@ -522,7 +622,7 @@
   }
 
   // Screens: #live (default), #coach and #settings.
-  const SCREENS = { live: "live", coach: "coaching", settings: "settings" };
+  const SCREENS = { live: "live", coach: "coaching", setup: "setup-screen", settings: "settings" };
   function route() {
     const screen = SCREENS[location.hash.slice(1)] ? location.hash.slice(1) : "live";
     for (const [name, id] of Object.entries(SCREENS)) $(id).hidden = name !== screen;

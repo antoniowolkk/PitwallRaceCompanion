@@ -347,6 +347,34 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 12p
 .co-table .warn { color: var(--warn); }
 .co-table .bad { color: var(--crit); }
 
+/* Setup screen */
+#setup-screen { max-width: 1000px; }
+#setup-screen select { min-width: 220px; padding: 6px 8px; background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); font: inherit; }
+.su-proposal[data-level="warn"] { --accent: var(--warn); }
+.su-proposal[data-level="good"] { --accent: var(--good); }
+.su-proposal[data-level="bad"] { --accent: var(--crit); }
+.su-note { margin: 0 0 8px; font-size: 16px; }
+.su-symptom { margin: 0 0 6px; color: var(--warn); font-size: 17px; }
+.su-change { margin: 0 0 6px; font-family: var(--mono); font-size: 22px; font-weight: 600; }
+.su-why { margin: 0; }
+#su-actions { margin-top: 12px; }
+.btn[hidden] { display: none; }
+.su-symptoms, .su-values { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.su-symptoms li:not(.empty) { display: grid; grid-template-columns: minmax(180px, 1.2fr) 1fr auto; align-items: center; gap: 12px; }
+.su-symptoms li[data-level="good"] b { color: var(--good); }
+.su-symptoms li[data-level="watch"] b { color: var(--warn); }
+.su-symptoms .num { color: var(--text-2); font-family: var(--mono); font-size: 14px; }
+.su-meter { height: 8px; background: var(--surface-raised); position: relative; }
+.su-meter i { position: absolute; inset: 0 auto 0 0; background: var(--maroon-tint); }
+.su-meter::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--text-2); }
+.su-values { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.su-values li:not(.empty) { display: flex; justify-content: space-between; padding: 6px 10px; background: var(--surface-raised); }
+.su-values b { font-family: var(--mono); }
+.su-symptoms .empty, .su-values .empty { color: var(--text-2); }
+@media (max-width: 760px) {
+  .su-symptoms li:not(.empty) { grid-template-columns: 1fr; gap: 4px; }
+}
+
 /* Personal turn tips card */
 .coach { display: grid; gap: 10px; }
 .coach[data-level="warn"] { --accent: var(--warn); }
