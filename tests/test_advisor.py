@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from types import SimpleNamespace
 
@@ -88,14 +89,16 @@ def test_worse_suggests_going_back_and_reject_hides_a_change(tmp_path):
     adv.loaded()
     drive(adv, turns, 3, entry=-1.6)
     assert adv.state["history"][-1]["result"] == "worse" and "Go back to BGK_RACE.json" in adv.note
+    drive(adv, turns, 2, entry=-1.6)  # still on the worse version: no click on top of it (Monza, 2026-11-01)
+    assert adv.draft is None and "Go back to BGK_RACE.json" in adv.note
     adv.go_back()
     assert adv.state["current"] == "BGK_RACE.json" and adv.state["waiting"]
     adv.loaded()
 
     drive(adv, turns, 3, entry=-1.0)
-    assert adv.draft["param"] == "rear_wing"
+    assert adv.draft["param"] == "ride_rear" and adv.draft["step"] == -1  # rear wing +1 made it worse: next rule
     adv.reject()
-    assert adv.draft["param"] == "ride_rear" and adv.draft["step"] == -1  # next rule for the same symptom
+    assert adv.draft is None
 
 
 def test_setup_api_picks_base_and_applies(tmp_path):
@@ -133,3 +136,25 @@ def test_new_proposal_is_announced_once_on_a_straight(tmp_path):
                     "twelve to thirteen. It's on the Setup screen."]
     drive(adv, turns, 1, entry=-1.0)  # same proposal next lap: not said again
     assert not [c for c in e.update(snap, 20.0) if c.kind == "coach_setup"]
+
+
+def test_proposal_applied_before_it_was_said_is_not_said(tmp_path):
+    import random
+
+    from pitwall.events import EventEngine
+    from pitwall.track import TrackMap
+
+    acc_copy(tmp_path / "acc")
+    th = load_thresholds()
+    e = EventEngine(th, track_map=TrackMap(th, turns={}), rng=random.Random(1), personal_root=tmp_path / "data",
+                    setups_root=tmp_path / "acc")
+    adv, turns = e.setup, e.coach
+    snap = Snapshot(status="live", car="ferrari_296_gt3", track="Spa", session="race", tyre_temp_c=(85,) * 4,
+                    tyre_pressure_psi=(26.5,) * 4)
+    adv.update(snap)
+    adv.set_base("BGK_RACE.json")
+    drive(adv, turns, 3, entry=-1.0)
+    assert not [c for c in e.update(snap, 1.0) if c.kind == "coach_setup"]  # race: held back
+    adv.apply()  # the driver applied it from the Setup screen (Monza, 2026-11-01)
+    quali = dataclasses.replace(snap, session="qualify")
+    assert not [c for c in e.update(quali, 30.0) if c.kind == "coach_setup"]

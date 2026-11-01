@@ -174,6 +174,9 @@ class SetupAdvisor:
             self.note = f"Collecting: {len(laps)} of {self.c['min_clean_laps']} clean laps."
         elif check:
             self._check(check, len(laps))
+        elif self._on_worse():
+            last = self.state["history"][-1]
+            self.note = f"The last change made it worse. Go back to {last['from_file']}?"
         else:
             self.draft = self._propose()
             self.note = "" if self.draft else "Balance looks fine: no change to suggest."
@@ -193,7 +196,7 @@ class SetupAdvisor:
                     continue
                 key = f"{rule['param']}{rule['step']:+d}"
                 new = values[rule["param"]] + rule["step"]
-                if new < 0 or self.state["rejected"].get(key, -1) > lap:
+                if new < 0 or self.state["rejected"].get(key, -1) > lap or self._tried(rule["param"], values[rule["param"]], new):
                     continue
                 return {
                     "symptom": name, "label": SYMPTOMS[name], **s,
@@ -203,6 +206,16 @@ class SetupAdvisor:
                     "why": rule["why"], "source": rule["source"], "base": self.state["current"],
                 }
         return None
+
+    def _on_worse(self) -> bool:
+        """Still on a version that made things worse: no further changes on top of it."""
+        h = self.state["history"]
+        return bool(h) and h[-1]["result"] == "worse" and self.state.get("current") == h[-1]["file"]
+
+    def _tried(self, param: str, old: int, new: int) -> bool:
+        """This exact click was tried before and made things worse."""
+        return any(e["param"] == param and e["from"] == old and e["to"] == new and e["result"] == "worse"
+                   for e in self.state["history"])
 
     def _write_draft(self) -> None:
         """The draft setup (current version plus the proposed click), rewritten every lap."""
