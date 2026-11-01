@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config import CALL_PRIORITY, CHOICES, Prefs, Settings
@@ -341,6 +341,18 @@ def create_app(
         await hub.broadcast(msg)
         log.info("settings changed: %s", changes)
         return msg
+
+    @app.post("/api/quit")
+    async def quit_pitwall(request: Request) -> dict[str, Any]:
+        """Stop Pit Wall (Settings button); only from this PC, never from a phone on the network."""
+        stop = getattr(app.state, "shutdown", None)
+        if not request.client or request.client.host not in ("127.0.0.1", "::1"):
+            raise HTTPException(status_code=403, detail="only from this PC")
+        if not stop:
+            raise HTTPException(status_code=409, detail="not started from the command line")
+        log.info("stop requested from the dashboard")
+        stop()
+        return {"stopping": True}
 
     @app.post("/api/voice/test")
     async def voice_test() -> dict[str, Any]:

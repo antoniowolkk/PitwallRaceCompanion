@@ -16,6 +16,7 @@ Local AI race engineer for Assetto Corsa Competizione (ACC). Full spec: [docs/PR
 ```bash
 uv sync                                   # install (pulls pyaccsharedmemory on Windows only)
 uv run pitwall                            # serve http://localhost:8765; ACC on Windows, mock elsewhere
+uv run pitwall shortcut                   # Desktop shortcut: starts Pit Wall without a terminal (pythonw -m pitwall --open)
 uv run pitwall --source mock --mock-speed 4
 uv run pitwall record recordings/x.jsonl  # Windows: record a real ACC session
 uv run pitwall --replay recordings/x.jsonl
@@ -86,6 +87,7 @@ Run `uv run pitwall`, open http://localhost:8765, start ACC from Steam.
 - Personal tips, first real run (2026-10-28, Monza qualifying, Parabolica lockups 3 of 3, no clean pass to compare): qwen3:4b gave "Lock the front wheel on the inside, shift to 4th gear" (rejected: digit), copied example lines word for word, named the turn, dropped full stops and opened with the habit as a question ("Lockup? ..."). Now: the prompt lists what helps per habit instead of example lines, `personal.check` turns "in Parabolica" into "in there", adds a missing full stop and drops a leading "Lockup?", and each turn gets up to 3 asks. Result: 1 line, usable but clumsy ("Lockup front wheel? Brake a bit softer and release smooth on turn in."). A bigger model would write better lines; the 4 GB GPU limits us to ~4B.
 - ACC setup files (2026-11-01, files on this PC saved by ACC): CRLF, tabs, number lists on one line (`[ 57, 69, 50, 56 ]`), values are click steps. `rideHeight` has 4 numbers; across ~60 setups only [0] (front) and [2] (rear) vary, [1] and [3] are constant per car (6/18, 11/18). Track folders have mixed case (`Spa`, `monza`, `Barcelona`). ACC does not report which setup file is loaded, so the driver picks the base and presses Loaded.
 - Balance (Ferrari 296, Barcelona, first lap): mean front minus rear slip angle entry -0.04, mid +0.84, exit +0.72 deg; slow corners mid up to +1.9 over 3 laps. The 3-lap window moves the slow-corner number from 1.93 to 1.39 lap to lap, so proposals can come and go.
+- One-click start (2026-11-01): the Desktop shortcut runs `.venv\Scripts\pythonw.exe -m pitwall --open` in the project folder. With pythonw there is no console, so `main()` sends stdout/stderr to `%LOCALAPPDATA%\PitWall\pitwall.log`. A second click finds the running one on port 8765 and only opens the browser. Settings > Stop Pit Wall calls `POST /api/quit` (localhost only, 403 from the network) which sets uvicorn's `should_exit`. The venv's pythonw is a launcher, so two pythonw.exe processes per running Pit Wall is normal.
 - Static strings (`car_model`, `track`) come NUL-padded to their buffer size; `acc._text` cuts at the first NUL.
 - The dashboard renders via `requestAnimationFrame`, so a hidden tab or pane freezes the view until it is visible again. Data is still received; it catches up at once. Not a bug, but don't judge freshness from a background tab.
 - `docs/reference/BGK_RACE.json` has **LF** line endings and tabs; the PRD says ACC setup files use CRLF. Check a file saved by ACC itself before writing the phase 5 setup writer.

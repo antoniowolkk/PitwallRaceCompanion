@@ -8,16 +8,44 @@
     pitwall --engine piper          faster, flatter voice engine (default kokoro)
     pitwall voices download         fetch the voice model (Kokoro 120 MB, Piper 63 MB a voice)
     pitwall lines generate          AI-write varied radio lines with Ollama (run when not racing)
+    pitwall --open                  open the dashboard in the browser once it is up
+    pitwall shortcut                put a "Pit Wall" shortcut on the Desktop (starts it without a terminal)
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import subprocess
+import sys
+import threading
 import time
+import urllib.request
+import webbrowser
 from pathlib import Path
 
 from .config import Prefs, Settings, data_dir
+
+
+def _running(url: str) -> bool:
+    """Is a Pit Wall already serving here? (A second one could not bind the port anyway.)"""
+    try:
+        with urllib.request.urlopen(f"{url}/api/status", timeout=1) as res:
+            return json.loads(res.read()).get("type") == "status"
+    except (OSError, ValueError):
+        return False
+
+
+def _open_when_up(url: str) -> None:
+    def wait() -> None:
+        for _ in range(120):
+            if _running(url):
+                webbrowser.open(url)
+                return
+            time.sleep(0.5)
+
+    threading.Thread(target=wait, name="open-browser", daemon=True).start()
 
 
 def _serve(args: argparse.Namespace) -> None:
@@ -51,9 +79,19 @@ def _serve(args: argparse.Namespace) -> None:
         settings.source = args.source
     elif args.replay:
         settings.source = "replay"
+    url = f"http://localhost:{settings.port}"
+    if _running(url):  # the shortcut clicked twice: show the one that runs
+        if args.open:
+            webbrowser.open(url)
+        print(f"Pit Wall is already running: {url}")
+        return
     app = create_app(settings)
     print(f"Pit Wall dashboard: http://{'localhost' if not args.lan else settings.host}:{settings.port}")
-    uvicorn.run(app, host=settings.host, port=settings.port, log_level="warning")
+    server = uvicorn.Server(uvicorn.Config(app, host=settings.host, port=settings.port, log_level="warning"))
+    app.state.shutdown = lambda: setattr(server, "should_exit", True)  # the Stop button in Settings
+    if args.open:
+        _open_when_up(url)
+    server.run()
 
 
 def _record(args: argparse.Namespace) -> None:
@@ -181,7 +219,30 @@ def _tips(args: argparse.Namespace) -> None:
     print(f"Saved {sum(len(h) for h in lines.values())} tips to {path}. Pit Wall picks them up at the next session.")
 
 
+def _shortcut(args: argparse.Namespace) -> None:
+    """A Desktop shortcut that starts Pit Wall without a console window and opens the dashboard."""
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    if not pythonw.exists():
+        raise SystemExit(f"pythonw.exe not found next to {sys.executable}")
+    root = Path(__file__).resolve().parents[2]  # the project folder (src/pitwall/__main__.py)
+    script = (
+        "$d = [Environment]::GetFolderPath('Desktop'); "
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'Pit Wall.lnk')); "
+        f"$s.TargetPath = '{pythonw}'; $s.Arguments = '-m pitwall --open'; "
+        f"$s.WorkingDirectory = '{root}'; $s.Description = 'Pit Wall race engineer for ACC'; "
+        "$s.Save(); Write-Output (Join-Path $d 'Pit Wall.lnk')"
+    )
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, check=True)
+    print(f"Shortcut made: {out.stdout.strip()}")
+    print(f"It runs {pythonw} -m pitwall --open (no terminal). Log: {data_dir() / 'pitwall.log'}")
+
+
 def main(argv: list[str] | None = None) -> None:
+    if sys.stdout is None or sys.stderr is None:
+        # Started from the shortcut with pythonw: no console, so everything goes to a log file.
+        log = data_dir() / "pitwall.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(log, "a", encoding="utf-8", buffering=1)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("phonemizer").setLevel(logging.ERROR)  # "words count mismatch" on every line, harmless
     p = argparse.ArgumentParser(prog="pitwall", description="Pit Wall race engineer core")
@@ -194,6 +255,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--voice", choices=["female", "male", "off"], help="engineer voice (default: saved setting, male)")
     p.add_argument("--engine", choices=["kokoro", "piper"], help="voice engine (default: saved setting, kokoro)")
     p.add_argument("--volume", type=float, help="voice volume, 0 to 1 (default: saved setting, 1)")
+    p.add_argument("--open", action="store_true", help="open the dashboard in the browser once it is up")
     p.set_defaults(func=_serve)
 
     sub = p.add_subparsers()
@@ -223,6 +285,9 @@ def main(argv: list[str] | None = None) -> None:
     k.add_argument("--session", help="session id (default: the newest one waiting for tips)")
     k.add_argument("--yes", action="store_true", help="do not ask before running the AI")
     k.set_defaults(func=_tips)
+
+    sc = sub.add_parser("shortcut", help='put a "Pit Wall" shortcut on the Desktop (Windows)')
+    sc.set_defaults(func=_shortcut)
 
     args = p.parse_args(argv)
     args.func(args)

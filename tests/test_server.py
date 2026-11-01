@@ -98,7 +98,18 @@ def test_cli_parses_every_command():
 
     from pitwall.__main__ import main
 
-    for argv in (["--help"], ["record", "--help"], ["voices", "--help"], ["lines", "--help"], ["tracks", "--help"], ["tips", "--help"]):
+    for argv in (["--help"], ["record", "--help"], ["voices", "--help"], ["lines", "--help"], ["tracks", "--help"], ["tips", "--help"], ["shortcut", "--help"]):
         with pytest.raises(SystemExit) as e:
             main(argv)
         assert e.value.code == 0
+
+
+def test_quit_only_from_this_pc_and_only_when_started_from_the_cli():
+    app = create_app(Settings(source="mock"), source=FakeSource(), run_poller=False)
+    stopped = []
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        assert client.post("/api/quit").status_code == 409  # tests and embedding: nothing to stop
+        app.state.shutdown = lambda: stopped.append(True)
+        assert client.post("/api/quit").json() == {"stopping": True} and stopped
+    with TestClient(app, client=("192.168.1.20", 50000)) as client:
+        assert client.post("/api/quit").status_code == 403  # a phone on the network cannot stop it
