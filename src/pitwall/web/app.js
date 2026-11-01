@@ -715,6 +715,18 @@
   });
   form.addEventListener("submit", (e) => e.preventDefault());
 
+  $("quit").addEventListener("click", async () => {
+    if (!confirm("Stop Pit Wall? The radio and dashboard stop until you start it again.")) return;
+    try {
+      const res = await fetch("/api/quit", { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || res.statusText);
+      setState("good", "● Pit Wall is stopping. Start it again with the Desktop shortcut.");
+    } catch (err) {
+      setState("bad", `✕ ${err.message}`);
+    }
+  });
+
   $("voice-test").addEventListener("click", async () => {
     const btn = $("voice-test");
     btn.disabled = true;

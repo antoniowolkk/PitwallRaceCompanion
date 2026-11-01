@@ -22,6 +22,8 @@ uv run pitwall voices download      # engineer voice model, 120 MB (once)
 uv run pitwall                      # ACC on Windows, mock telemetry elsewhere
 ```
 
+Or run `uv run pitwall shortcut` once: a **Pit Wall** shortcut appears on the Desktop that starts it without a terminal and opens the dashboard (stop it from Settings).
+
 Open http://localhost:8765. Start ACC from Steam as usual; Pit Wall connects when a session goes live. Voice, volume, which calls you hear and subtitles are on the Settings tab and are remembered.
 
 Options:

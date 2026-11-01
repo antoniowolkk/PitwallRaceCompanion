@@ -494,6 +494,7 @@ main[hidden] { display: none; }
 .btn:focus-visible { outline: 2px solid var(--maroon-tint); outline-offset: 2px; }
 .note { margin: 0; padding: 8px 12px; background: rgba(224, 160, 48, .12); color: var(--warn); font-size: 14px; }
 .note code { font-family: var(--mono); color: var(--text); }
+.note-plain { margin: 0; color: var(--text-2); }
 .saved { min-height: 1.4em; margin: 0; color: var(--text-2); }
 .saved[data-level="good"] { color: var(--good); }
 .saved[data-level="bad"] { color: var(--crit); }
