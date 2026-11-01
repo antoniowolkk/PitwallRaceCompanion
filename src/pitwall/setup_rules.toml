@@ -1,0 +1,61 @@
+# Setup advisor rules: a symptom maps to one click on one setup value. The first rule whose
+# value is in the setup, not rejected and not below zero wins. Code decides when (enough clean
+# laps, one change at a time); this file says what. Starter rules from the PRD; each must be
+# checked per car in testing.
+#
+# Symptoms (from front minus rear slip angle while cornering, see [setup] in thresholds.toml):
+#   entry_oversteer   rear slides more than the front while braking into corners
+#   fast_understeer   front slides more mid-corner in fast corners
+#   slow_understeer   front slides more mid-corner in slow corners
+#   lap_understeer    understeer on entry, mid-corner and exit alike
+#   exit_oversteer    rear slides more than the front on the throttle
+#   exit_wheelspin    rear wheels spin up on the way out of corners
+
+[[rule]]
+symptom = "entry_oversteer"
+param = "rear_wing"
+step = 1
+why = "More rear wing gives the rear more grip, so it stays planted while you brake and turn in."
+source = "Coach Dave Academy, how to fix oversteer and understeer in ACC"
+
+[[rule]]
+symptom = "entry_oversteer"
+param = "ride_rear"
+step = -1
+why = "A lower rear moves aero balance rearward, so the rear is calmer on entry."
+source = "Coach Dave Academy, how to fix oversteer and understeer in ACC"
+
+[[rule]]
+symptom = "fast_understeer"
+param = "rear_wing"
+step = -1
+why = "Less rear wing shifts the aero balance forward, so the front bites in fast corners."
+source = "Coach Dave Academy, how to fix oversteer and understeer in ACC"
+
+[[rule]]
+symptom = "lap_understeer"
+param = "ride_rear"
+step = 1
+why = "A higher rear moves aero balance forward, so the front turns in everywhere."
+source = "Coach Dave Academy, how to fix oversteer and understeer in ACC"
+
+[[rule]]
+symptom = "slow_understeer"
+param = "arb_front"
+step = -1
+why = "A softer front anti-roll bar lets the front tyres work more in slow corners."
+source = "Common ACC setup advice; to verify per car"
+
+[[rule]]
+symptom = "exit_wheelspin"
+param = "tc"
+step = 1
+why = "One step more traction control catches the wheelspin on the way out."
+source = "Driver61 ACC setup guide; to verify"
+
+[[rule]]
+symptom = "exit_oversteer"
+param = "arb_rear"
+step = -1
+why = "A softer rear anti-roll bar gives the rear more grip on the throttle."
+source = "Common ACC setup advice; to verify per car"

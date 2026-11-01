@@ -81,6 +81,8 @@ def test_from_acc_maps_library_fields():
     physics = SimpleNamespace(
         speed_kmh=212.4, gear=4, rpm=7400, fuel=41.2, gas=0.8, brake=0.0, steer_angle=-0.1,
         wheel_slip=_wheels(0.1, 0.1, 0.3, 0.2), abs=0.0, tc=0.4, brake_bias=0.575, air_temp=22.0, road_temp=31.5,
+        slip_angle=_wheels(0.08, 0.07, 0.03, 0.03), local_angular_vel=SimpleNamespace(x=0, y=0.4, z=0),
+        g_force=SimpleNamespace(x=1.6, y=1.0, z=-0.2),
         tyre_core_temp=_wheels(84, 82, 79, 80), wheel_pressure=_wheels(26.4, 26.3, 26.1, 26.2),
     )
     graphics = SimpleNamespace(
@@ -115,6 +117,7 @@ def test_from_acc_maps_library_fields():
     assert (snap.lap_pos, snap.x, snap.y) == (0.25, -120.5, 88.25)  # our car, not car 0
     assert snap.throttle == 0.8 and snap.wheel_slip == (0.1, 0.1, 0.3, 0.2) and snap.tc == 0.4
     assert (snap.abs_level, snap.tc_level, snap.grip, snap.rain, snap.road_c) == (3, 4, "optimum", "none", 31.5)
+    assert (snap.slip_angle[0], snap.yaw_rate, snap.g_lat) == (0.08, 0.4, 1.6)
 
 
 def test_pause_holds_last_live_values():

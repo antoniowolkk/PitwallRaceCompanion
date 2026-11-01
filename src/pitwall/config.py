@@ -106,4 +106,5 @@ class Settings:
     variants: dict[str, list[str]] = field(default_factory=dict)  # AI-written lines (wording.py)
     tracks_dir: Path | None = None  # learned track outlines; None keeps them in memory
     coach_dir: Path | None = None  # saved sessions and personal tips; None: not saved, no offer
+    setups_dir: Path | None = None  # ACC's Setups folder; None: the setup advisor has no files
     thresholds: dict[str, Any] = field(default_factory=load_thresholds)

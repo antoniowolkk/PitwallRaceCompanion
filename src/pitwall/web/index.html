@@ -13,7 +13,7 @@
     <nav class="tabs" aria-label="Screens">
       <a class="tab active" aria-current="page" href="#live"><span>Live</span></a>
       <a class="tab" href="#coach"><span>Coach</span></a>
-      <span class="tab" aria-disabled="true" title="Phase 5"><span>Setup</span></span>
+      <a class="tab" href="#setup"><span>Setup</span></a>
       <a class="tab" href="#settings"><span>Settings</span></a>
     </nav>
     <ul class="status" aria-label="Status">
@@ -150,6 +150,51 @@
     <section class="hud" aria-labelledby="co-past-h">
       <h2 id="co-past-h">Past sessions</h2>
       <ol class="co-list" id="co-past"><li class="empty">No saved sessions yet.</li></ol>
+    </section>
+  </main>
+
+  <main id="setup-screen" hidden>
+    <section class="hud" aria-labelledby="su-base-h">
+      <h2 id="su-base-h">Setup <span class="hint" id="su-where"></span></h2>
+      <div class="row">
+        <label for="su-file">Base setup</label>
+        <select id="su-file"></select>
+        <button type="button" class="btn" id="su-use">Use as base</button>
+      </div>
+      <p class="sub" id="su-current">No car and track yet: start a session in ACC.</p>
+    </section>
+
+    <section class="hud su-proposal" id="su-proposal" data-level="idle" aria-live="polite" aria-labelledby="su-prop-h">
+      <h2 id="su-prop-h">Proposal</h2>
+      <p class="su-note" id="su-note">Waiting for driving data.</p>
+      <div id="su-draft" hidden>
+        <p class="su-symptom" id="su-symptom"></p>
+        <p class="su-change" id="su-change"></p>
+        <p class="su-why" id="su-why"></p>
+        <p class="sub" id="su-source"></p>
+      </div>
+      <div class="row" id="su-actions">
+        <button type="button" class="btn" id="su-apply" hidden>✓ Apply: write a new setup file</button>
+        <button type="button" class="btn ghost" id="su-reject" hidden>✕ Reject</button>
+        <button type="button" class="btn" id="su-loaded" hidden>● Loaded it in the garage</button>
+        <button type="button" class="btn ghost" id="su-back" hidden>↶ Go back to the previous file</button>
+      </div>
+      <p class="saved" id="su-state" role="status"></p>
+    </section>
+
+    <section class="hud" aria-labelledby="su-bal-h">
+      <h2 id="su-bal-h">Balance <span class="hint">last 3 clean laps · front minus rear slip angle</span></h2>
+      <ul class="su-symptoms" id="su-symptoms"><li class="empty">Needs 3 clean laps.</li></ul>
+    </section>
+
+    <section class="hud" aria-labelledby="su-val-h">
+      <h2 id="su-val-h">Current setup <span class="hint">click steps</span></h2>
+      <ul class="su-values" id="su-values"><li class="empty">Pick a base setup.</li></ul>
+    </section>
+
+    <section class="hud" aria-labelledby="su-hist-h">
+      <h2 id="su-hist-h">Changes</h2>
+      <ol class="co-list" id="su-history"><li class="empty">No changes yet. Every change waits for your Apply.</li></ol>
     </section>
   </main>
 

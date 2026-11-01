@@ -125,3 +125,24 @@ safe_s = 6.0
 safe_min_m = 200.0
 # A coach line not started within this many seconds (radio busy) is dropped.
 expire_s = 5.0
+
+[setup]
+# Setup advisor (phase 5). Balance is measured only while cornering this hard (lateral g).
+min_g = 0.8
+# Symptoms come from the last window_laps clean laps; none before min_clean_laps, and a phase
+# needs min_samples passes. A corner is fast when its slowest point is at least fast_kmh.
+window_laps = 3
+min_clean_laps = 3
+min_samples = 5
+fast_kmh = 150.0
+# Balance = front minus rear slip angle in degrees while cornering (+ understeer, - oversteer).
+# First guesses: the Ferrari 296 at Barcelona (2026-11-01, first lap) ran entry -0.04, mid +0.84,
+# exit +0.72 on average, slow mid-corners up to +1.7. Tune after more laps.
+understeer_deg = 1.5
+oversteer_deg = 0.5
+lap_understeer_deg = 0.8  # entry, mid and exit all at least this
+wheelspin_rate = 0.15  # share of turns with wheelspin on the way out
+# After a change: better or worse when the symptom's strength (metric / limit) moves this much.
+better_by = 0.25
+# A rejected change is not offered again for this many laps.
+reject_laps = 10

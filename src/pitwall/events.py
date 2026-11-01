@@ -14,6 +14,7 @@ from typing import Any
 
 from .models import Snapshot
 from . import personal
+from .advisor import SetupAdvisor
 from .coach import StintCoach
 from .style import condition
 from .tips import Mistake, TurnCoach
@@ -94,6 +95,7 @@ class EventEngine:
         rng: random.Random | None = None,
         track_map: TrackMap | None = None,
         personal_root: Path | None = None,
+        setups_root: Path | None = None,
     ):
         self._lines = calls or load_calls()
         # AI-written alternatives per kind (wording.py); empty means canned lines only (Lite mode).
@@ -121,6 +123,7 @@ class EventEngine:
         self._closing_warn_ms = thresholds["pit"]["closing_warn_s"] * 1000
         self.coach = TurnCoach(thresholds, track_map) if track_map else None
         self.stint = StintCoach(thresholds, self.coach, track_map) if self.coach and track_map else None
+        self.setup = SetupAdvisor(thresholds, self.coach, personal_root, setups_root) if self.coach else None
         self.tips = True  # Settings: per-turn tips on or off
         self.coach_on = True  # Settings: stint coach on or off
         self._coach_expire = thresholds["coach"]["expire_s"]
@@ -170,6 +173,8 @@ class EventEngine:
         prev, self._prev = self._prev, snap
         if snap.status != "live":
             return []  # paused or replay: nobody is driving
+        if self.setup:
+            self.setup.update(snap)
         calls = [
             *self._flags(prev, snap, now),
             *self._fuel(prev, snap, now),

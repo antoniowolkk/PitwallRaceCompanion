@@ -24,6 +24,7 @@ def _serve(args: argparse.Namespace) -> None:
     import uvicorn
 
     from .server import create_app
+    from .setups import setups_root
 
     # Saved Settings-screen choices, with any flag given on the command line on top for this run.
     prefs_path = data_dir() / "settings.json"
@@ -44,6 +45,7 @@ def _serve(args: argparse.Namespace) -> None:
         variants=variants,
         tracks_dir=data_dir() / "tracks",
         coach_dir=data_dir(),
+        setups_dir=setups_root(),
     )
     if args.source:
         settings.source = args.source

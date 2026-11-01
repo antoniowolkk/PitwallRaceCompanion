@@ -16,6 +16,7 @@ look for patterns and the local AI can write personal tips from them (only when 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,6 +46,9 @@ class Pass:
     corrections: int = 0  # steering reversals inside the turn (a clean corner has about one: in, then unwind)
     steer_ext: float | None = None  # furthest steering in the current direction
     steer_dir: int = 0
+    # Balance while cornering hard, per phase (entry: braking, exit: on throttle, mid: between):
+    # sum and count of front minus rear slip angle, degrees. + is understeer, - oversteer.
+    balance: dict[str, list[float]] = field(default_factory=lambda: {"entry": [0.0, 0], "mid": [0.0, 0], "exit": [0.0, 0]})
 
 
 @dataclass
@@ -89,6 +93,7 @@ class TurnCoach:
         self._lock_slip, self._spin_slip = c["lock_slip"], c["spin_slip"]
         self._spin_throttle, self._samples = c["spin_throttle"], c["slip_samples"]
         self._swing = c["steer_swing"]
+        self._balance_g = thresholds["setup"]["min_g"]
         self._loss_s, self._per_lap = c["loss_s"], c["max_per_lap"]
         self._race_kinds, self._race_gap = set(c["race_kinds"]), c["race_gap_laps"]
         self.differs = thresholds["style"]  # how big a difference to the best pass counts
@@ -214,6 +219,13 @@ class TurnCoach:
             p.coast_ms += dt
         if snap.abs > 0:
             p.abs_ms += dt
+        if abs(snap.g_lat) >= self._balance_g:
+            phase = "entry" if snap.brake >= 0.1 else "exit" if snap.throttle >= 0.5 else "mid"
+            front = (abs(snap.slip_angle[0]) + abs(snap.slip_angle[1])) / 2
+            rear = (abs(snap.slip_angle[2]) + abs(snap.slip_angle[3])) / 2
+            acc = p.balance[phase]
+            acc[0] += math.degrees(front - rear)
+            acc[1] += 1
         if snap.tc > 0:
             p.tc_ms += dt
         if _inside(pos, turn.start, turn.end):
@@ -251,6 +263,7 @@ class TurnCoach:
             "abs_s": round(p.abs_ms / 1000, 1),
             "tc_s": round(p.tc_ms / 1000, 1),
             "corrections": p.corrections,
+            **{f"bal_{ph}": round(s / n, 2) if n else None for ph, (s, n) in p.balance.items()},
             "stint": self.stint,
             # What the car and track were like, for the AI that writes the personal tips.
             "session": snap.session, "brake_bias": round(snap.brake_bias, 3), "abs_level": snap.abs_level,

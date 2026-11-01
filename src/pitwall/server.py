@@ -198,7 +198,7 @@ def create_app(
     track_map = TrackMap(settings.thresholds, root=settings.tracks_dir)
     engine = EventEngine(
         settings.thresholds, variants=None if settings.prefs.lite else variants, track_map=track_map,
-        personal_root=settings.coach_dir,
+        personal_root=settings.coach_dir, setups_root=settings.setups_dir,
     )
     engine.tips = settings.prefs.tips
     engine.coach_on = settings.prefs.coach
@@ -256,6 +256,45 @@ def create_app(
     @app.get("/api/sessions")
     async def sessions() -> list[dict[str, Any]]:
         return await asyncio.to_thread(style.list_sessions, desk.root) if desk.root else []
+
+    def advisor() -> Any:
+        if not poller.engine or not poller.engine.setup:
+            raise HTTPException(status_code=409, detail="setup advisor is off")
+        return poller.engine.setup
+
+    async def setup_action(action: Callable[[], Any]) -> dict[str, Any]:
+        try:
+            action()
+        except (ValueError, OSError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        view = advisor().view()
+        advisor().dirty = False
+        await hub.broadcast(view)
+        return view
+
+    @app.get("/api/setup")
+    async def setup_view() -> dict[str, Any]:
+        return advisor().view()
+
+    @app.post("/api/setup/base")
+    async def setup_base(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return await setup_action(lambda: advisor().set_base(str(body.get("file", ""))))
+
+    @app.post("/api/setup/apply")
+    async def setup_apply() -> dict[str, Any]:
+        return await setup_action(lambda: advisor().apply())
+
+    @app.post("/api/setup/reject")
+    async def setup_reject() -> dict[str, Any]:
+        return await setup_action(lambda: advisor().reject())
+
+    @app.post("/api/setup/loaded")
+    async def setup_loaded() -> dict[str, Any]:
+        return await setup_action(lambda: advisor().loaded())
+
+    @app.post("/api/setup/back")
+    async def setup_back() -> dict[str, Any]:
+        return await setup_action(lambda: advisor().go_back())
 
     @app.post("/api/coach/dismiss")
     async def coach_dismiss(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -325,6 +364,8 @@ def create_app(
         await websocket.send_json(desk.message())
         if poller.engine and poller.engine.stint:
             await websocket.send_json(poller.engine.stint.view())
+        if poller.engine and poller.engine.setup:
+            await websocket.send_json(poller.engine.setup.view())
         hub.clients.add(websocket)
         try:
             while True:
