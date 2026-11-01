@@ -110,3 +110,26 @@ def test_setup_api_picks_base_and_applies(tmp_path):
         view = client.post("/api/setup/base", json={"file": "BGK_RACE.json"}).json()
         assert view["current"] == "BGK_RACE.json" and view["values"]["rear_wing"]["value"] == 12
         assert client.post("/api/setup/apply").status_code == 400  # no draft yet
+
+
+def test_new_proposal_is_announced_once_on_a_straight(tmp_path):
+    import random
+
+    from pitwall.events import EventEngine
+    from pitwall.track import TrackMap
+
+    acc_copy(tmp_path / "acc")
+    th = load_thresholds()
+    tm = TrackMap(th, turns={})
+    e = EventEngine(th, track_map=tm, rng=random.Random(1), personal_root=tmp_path / "data", setups_root=tmp_path / "acc")
+    adv, turns = e.setup, e.coach
+    snap = Snapshot(status="live", car="ferrari_296_gt3", track="Spa", session="qualify", tyre_temp_c=(85,) * 4,
+                    tyre_pressure_psi=(26.5,) * 4)
+    adv.update(snap)
+    adv.set_base("BGK_RACE.json")
+    drive(adv, turns, 3, entry=-1.0)
+    said = [c.text for c in e.update(snap, 1.0) if c.kind == "coach_setup"]
+    assert said == ["Setup idea for when you pit. You've got oversteer on corner entry, so rear wing one click up, "
+                    "twelve to thirteen. It's on the Setup screen."]
+    drive(adv, turns, 1, entry=-1.0)  # same proposal next lap: not said again
+    assert not [c for c in e.update(snap, 20.0) if c.kind == "coach_setup"]

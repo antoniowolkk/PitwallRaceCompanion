@@ -315,7 +315,17 @@ class EventEngine:
         for kind in kinds:
             text = self._pick(kind, self._lines[kind]["text"])
             calls.append(Call(kind, int(self._lines[kind]["priority"]), text, now, snap.laps + 1, expire_s=self._coach_expire))
-        return calls
+        return calls + self._setup_call(snap, now)
+
+    def _setup_call(self, snap: Snapshot, now: float) -> list[Call]:
+        """A new setup proposal, mentioned once by the coach on a straight (not in races)."""
+        d = self.setup.announce if self.setup else None
+        if not d or (snap.session == "race" and not self.stint.c["race"]) or not self.stint._safe(snap):
+            return []
+        self.setup.announce = None
+        change = f"{d['param_label'].lower()} one click {'up' if d['step'] > 0 else 'down'}, {words(d['from'])} to {words(d['to'])}"
+        text = self._pick("coach_setup", self._lines["coach_setup"]["text"]).format(symptom=d["label"].lower(), change=change)
+        return [Call("coach_setup", int(self._lines["coach_setup"]["priority"]), text, now, snap.laps + 1, expire_s=self._coach_expire)]
 
     def reload_personal(self, track: str | None) -> None:
         self._personal_track = track
