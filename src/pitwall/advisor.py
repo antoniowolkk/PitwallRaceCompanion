@@ -92,6 +92,8 @@ class SetupAdvisor:
         self.note = ""
         self._seen = 0
         self.dirty = True
+        self.announce: dict[str, Any] | None = None  # a new proposal for the engineer to mention once
+        self._announced: tuple[Any, ...] | None = None
 
     # --- state per car and track ------------------------------------------------------
 
@@ -175,6 +177,9 @@ class SetupAdvisor:
         else:
             self.draft = self._propose()
             self.note = "" if self.draft else "Balance looks fine: no change to suggest."
+            key = (self.draft["symptom"], self.draft["param"], self.draft["to"]) if self.draft else None
+            if key and key != self._announced:  # said once per proposal, not every lap it stays
+                self._announced, self.announce = key, self.draft
             self._write_draft()
 
     def _propose(self) -> dict[str, Any] | None:

@@ -114,3 +114,9 @@ text = "Lap times are jumping around a bit. Try to hit the same braking points e
 [coach_praise]
 priority = 3
 text = "That's a tidy lap, nice and clean. Keep that going."
+
+# A new setup proposal (phase 5), once per proposal, on a straight, not in races.
+# {symptom} "understeer in slow corners", {change} "front anti-roll bar one click down, two to one".
+[coach_setup]
+priority = 3
+text = "Setup idea for when you pit. You've got {symptom}, so {change}. It's on the Setup screen."
